@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 # Import all models to ensure they are loaded
 from app.auth.models.postgres_models import SocialAccount, User  # noqa
+from app.game.models.game_models import Scenario, Character, GameSession, GameMessage  # noqa
 from app.common.storage.postgres import Base
 from config.settings import settings
 

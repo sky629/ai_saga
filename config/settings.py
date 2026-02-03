@@ -37,6 +37,17 @@ class Settings(BaseSettings):
     google_client_secret: str
     google_redirect_uri: str
 
+    # Gemini AI
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+
+    # Game Settings
+    game_min_turns: int = 1
+    game_max_turns: int = 30
+
+    # Kafka
+    kafka_bootstrap_servers: str = "localhost:9092"
+
     # CORS
     allowed_origins: str = "http://localhost:3000,http://localhost:8080"
 

@@ -6,6 +6,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.common.exception import APIException
 from app.common.logging import error_logger
+from config.settings import settings
 
 
 async def api_exception_handler(request: Request, exc: APIException) -> JSONResponse:
@@ -72,7 +73,13 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
         exc_info=True,
     )
 
+    content = {"message": "Internal server error"}
+    if not settings.is_prod():
+        import traceback
+        content["detail"] = str(exc)
+        content["traceback"] = traceback.format_exc().split("\n")
+
     return JSONResponse(
         status_code=500,
-        content={"message": "Internal server error"},
+        content=content,
     )

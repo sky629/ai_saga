@@ -167,6 +167,23 @@ class PostgresStorage(metaclass=Singleton):
             await self.close_domain_pool(domain)
         logger.info("All domain pools closed")
 
+    # FastAPI Dependency Methods
+    async def read_db(self):
+        """FastAPI dependency for read-only database session.
+        
+        Usage: Depends(postgres_storage.read_db)
+        """
+        async with self.get_domain_read_session() as session:
+            yield session
 
-# Global instances
+    async def write_db(self):
+        """FastAPI dependency for write database session.
+        
+        Usage: Depends(postgres_storage.write_db)
+        """
+        async with self.get_domain_write_session() as session:
+            yield session
+
+
+# Global instance
 postgres_storage = PostgresStorage()

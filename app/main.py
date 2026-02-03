@@ -6,7 +6,9 @@ from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import __version__
-from app.auth.routes.auth import auth_public_router_v1
+from app.auth.presentation.routes.auth import auth_public_router_v1
+from app.dev.routes import dev_router
+from app.game.presentation.routes.game_routes import game_router_v1
 from app.common.exception import APIException
 from app.common.logging import (
     CONSOLE_LOGGING_CONFIG,
@@ -112,6 +114,11 @@ def create_app(logging_configuration: dict):
 
     _app.include_router(router)
     _app.include_router(auth_public_router_v1)
+    _app.include_router(game_router_v1)
+
+    # Dev routes (disabled in production)
+    if not settings.is_prod():
+        _app.include_router(dev_router)
 
     # Startup and shutdown events
     @_app.on_event("startup")
