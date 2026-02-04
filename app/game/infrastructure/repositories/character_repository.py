@@ -24,10 +24,10 @@ class CharacterRepositoryImpl(CharacterRepositoryInterface):
             select(Character).where(Character.id == character_id)
         )
         orm = result.scalar_one_or_none()
-        
+
         if orm is None:
             return None
-        
+
         return CharacterMapper.to_entity(orm)
 
     async def get_by_user(self, user_id: UUID) -> list[CharacterEntity]:
@@ -39,7 +39,7 @@ class CharacterRepositoryImpl(CharacterRepositoryInterface):
             )
         )
         orms = result.scalars().all()
-        
+
         return [CharacterMapper.to_entity(orm) for orm in orms]
 
     async def save(self, character: CharacterEntity) -> CharacterEntity:
@@ -68,5 +68,5 @@ class CharacterRepositoryImpl(CharacterRepositoryInterface):
 
         await self._db.commit()
         await self._db.refresh(orm)
-        
+
         return CharacterMapper.to_entity(orm)

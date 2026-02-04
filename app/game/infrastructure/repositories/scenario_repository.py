@@ -24,10 +24,10 @@ class ScenarioRepositoryImpl(ScenarioRepositoryInterface):
             select(Scenario).where(Scenario.id == scenario_id)
         )
         orm = result.scalar_one_or_none()
-        
+
         if orm is None:
             return None
-        
+
         return ScenarioMapper.to_entity(orm)
 
     async def get_all_active(self) -> list[ScenarioEntity]:
@@ -36,5 +36,5 @@ class ScenarioRepositoryImpl(ScenarioRepositoryInterface):
             select(Scenario).where(Scenario.is_active.is_(True))
         )
         orms = result.scalars().all()
-        
+
         return [ScenarioMapper.to_entity(orm) for orm in orms]

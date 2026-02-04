@@ -1,31 +1,49 @@
 """Create Character Use Case."""
 
-from uuid import UUID, uuid4
+from uuid import UUID
+
 from pydantic import BaseModel
-from app.game.application.ports import CharacterRepositoryInterface
-from app.game.domain.entities import CharacterEntity
-from app.game.domain.entities.character import CharacterStats
+
+from app.common.utils.datetime import get_utc_datetime
+from app.common.utils.id_generator import get_uuid7
+from app.game.application.ports import (
+    CharacterRepositoryInterface,
+    GameSessionRepositoryInterface,
+)
+from app.game.domain.entities import CharacterEntity, CharacterStats
+
 
 class CreateCharacterInput(BaseModel):
-    """캐릭터 생성 입력 DTO."""
+    """Use Case 입력 DTO."""
+
     name: str
-    description: str | None = None
+    description: str
+
 
 class CreateCharacterUseCase:
-    """새 캐릭터를 생성하는 유스케이스."""
+    """캐릭터 생성 유스케이스."""
 
-    def __init__(self, character_repository: CharacterRepositoryInterface):
-        self.character_repository = character_repository
+    def __init__(
+        self,
+        character_repository: CharacterRepositoryInterface,
+        session_repository: GameSessionRepositoryInterface,
+    ):
+        self._character_repo = character_repository
+        self._session_repo = session_repository
 
-    async def execute(self, user_id: UUID, input_data: CreateCharacterInput) -> CharacterEntity:
-        """새 캐릭터 생성 및 저장."""
+    async def execute(
+        self, user_id: UUID, input_data: CreateCharacterInput
+    ) -> CharacterEntity:
+        """유스케이스 실행."""
+        # 1. Create character entity
         character = CharacterEntity(
-            id=uuid4(),
+            id=get_uuid7(),
             user_id=user_id,
             name=input_data.name,
             description=input_data.description,
             stats=CharacterStats(hp=100, max_hp=100, level=1),
             inventory=[],
-            is_active=True
+            is_active=True,
+            created_at=get_utc_datetime(),
         )
-        return await self.character_repository.save(character)
+        return await self._character_repo.save(character)

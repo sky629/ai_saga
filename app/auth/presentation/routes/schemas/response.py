@@ -1,8 +1,8 @@
 """Response models for authentication."""
 
-import uuid
 from datetime import datetime
 from typing import List, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -12,7 +12,7 @@ class UserResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: uuid.UUID
+    id: UUID
     email: str
     name: str
     user_level: int
@@ -29,7 +29,7 @@ class SocialAccountResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: uuid.UUID
+    id: UUID
     provider: str
     provider_user_id: str
     scope_granted: Optional[List[str]] = None
@@ -43,7 +43,9 @@ class TokenResponse(BaseModel):
 
     access_token: str = Field(..., description="JWT access token")
     token_type: str = Field(default="bearer", description="Token type")
-    expires_in: int = Field(..., description="Token expiration time in seconds")
+    expires_in: int = Field(
+        ..., description="Token expiration time in seconds"
+    )
     refresh_token: Optional[str] = Field(None, description="JWT refresh token")
 
 
@@ -69,7 +71,7 @@ class UserWithSocialAccountsResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: uuid.UUID
+    id: UUID
     email: str
     name: str
     user_level: int

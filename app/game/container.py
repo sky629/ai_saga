@@ -4,9 +4,6 @@ FastAPI의 Depends와 연동하여 Use Case 및 Repository 의존성을 관리�
 외부 라이브러리 없이 순수 Python으로 구현된 간단한 DI 패턴입니다.
 """
 
-from functools import lru_cache
-from typing import Callable
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.game.application.ports import (
@@ -18,12 +15,15 @@ from app.game.application.ports import (
     ScenarioRepositoryInterface,
 )
 from app.game.application.use_cases import (
+    CreateCharacterUseCase,
     GenerateEndingUseCase,
     ProcessActionUseCase,
     StartGameUseCase,
-    CreateCharacterUseCase,
 )
-from app.game.infrastructure.adapters import CacheServiceAdapter, LLMServiceAdapter
+from app.game.infrastructure.adapters import (
+    CacheServiceAdapter,
+    LLMServiceAdapter,
+)
 from app.game.infrastructure.repositories import (
     CharacterRepositoryImpl,
     GameMessageRepositoryImpl,
@@ -34,7 +34,7 @@ from app.game.infrastructure.repositories import (
 
 class GameContainer:
     """Game 모듈 의존성 컨테이너.
-    
+
     Use Case와 Repository 인스턴스를 생성하고 관리합니다.
     DB 세션은 요청마다 주입받아 사용합니다.
     """
@@ -99,6 +99,9 @@ class GameContainer:
             llm_service=self.llm_service,
         )
 
+    def generate_ending_use_case(self) -> GenerateEndingUseCase:
+        """엔딩 생성 유스케이스."""
+
         return GenerateEndingUseCase(
             session_repository=self.session_repository(),
             message_repository=self.message_repository(),
@@ -108,7 +111,8 @@ class GameContainer:
     def create_character_use_case(self) -> CreateCharacterUseCase:
         """캐릭터 생성 유스케이스."""
         return CreateCharacterUseCase(
-            character_repository=self.character_repository()
+            character_repository=self.character_repository(),
+            session_repository=self.session_repository(),
         )
 
     # === Query Factories (CQRS Read Side) ===
@@ -116,25 +120,34 @@ class GameContainer:
     def get_scenarios_query(self):
         """시나리오 목록 조회 쿼리."""
         from app.game.application.queries import GetScenariosQuery
+
         return GetScenariosQuery(self._db)
 
     def get_user_sessions_query(self):
         """사용자 세션 목록 조회 쿼리."""
         from app.game.application.queries import GetUserSessionsQuery
+
         return GetUserSessionsQuery(self._db)
 
-    def get_session_history_query(self):
+    async def get_session_history_query(self):
         """세션 히스토리 조회 쿼리."""
+        from app.common.storage.redis import pools
         from app.game.application.queries import GetSessionHistoryQuery
-        return GetSessionHistoryQuery(self._db)
+
+        redis = await pools.get_connection()
+        return GetSessionHistoryQuery(self._db, redis)
 
     def get_characters_query(self):
         """캐릭터 목록 조회 쿼리."""
-        from app.game.application.queries.get_characters import GetCharactersQuery
+        from app.game.application.queries.get_characters import (
+            GetCharactersQuery,
+        )
+
         return GetCharactersQuery(self._db)
 
 
 # === FastAPI Depends Integration ===
+
 
 def get_game_container(db: AsyncSession) -> GameContainer:
     """FastAPI Depends용 팩토리."""

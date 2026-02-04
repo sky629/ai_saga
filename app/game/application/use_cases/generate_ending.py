@@ -4,11 +4,12 @@
 ProcessActionUseCase에서 분리된 독립적인 엔딩 처리 로직.
 """
 
-from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.common.utils.datetime import get_utc_datetime
+from app.common.utils.id_generator import get_uuid7
 from app.game.application.ports import (
     GameMessageRepositoryInterface,
     GameSessionRepositoryInterface,
@@ -16,21 +17,22 @@ from app.game.application.ports import (
 )
 from app.game.domain.entities import GameMessageEntity, GameSessionEntity
 from app.game.domain.services import GameMasterService
-from app.game.domain.value_objects import EndingType, MessageRole
-from app.game.dto.response import GameEndingResponse
+from app.game.domain.value_objects import MessageRole
+from app.game.presentation.routes.schemas.response import GameEndingResponse
 
 
 class GenerateEndingInput(BaseModel):
     """Use Case 입력 DTO."""
+
     model_config = {"frozen": True}
-    
+
     session_id: UUID
     user_id: UUID
 
 
 class GenerateEndingUseCase:
     """게임 엔딩 생성 유스케이스.
-    
+
     Single Responsibility: 게임 엔딩을 생성하고
     세션을 완료 상태로 변경하는 것만 담당합니다.
     """
@@ -45,7 +47,9 @@ class GenerateEndingUseCase:
         self._message_repo = message_repository
         self._llm = llm_service
 
-    async def execute(self, input_data: GenerateEndingInput) -> GameEndingResponse:
+    async def execute(
+        self, input_data: GenerateEndingInput
+    ) -> GameEndingResponse:
         """유스케이스 실행."""
         # 1. Load session
         session = await self._session_repo.get_by_id(input_data.session_id)
@@ -62,7 +66,9 @@ class GenerateEndingUseCase:
         )
 
         # 4. Generate ending
-        response = await self._generate_ending_narrative(session, recent_messages)
+        response = await self._generate_ending_narrative(
+            session, recent_messages
+        )
 
         return response
 
@@ -97,7 +103,9 @@ class GenerateEndingUseCase:
 
         # Parse ending (도메인 서비스 활용)
         ending_type = GameMasterService.parse_ending_type(llm_response.content)
-        narrative = GameMasterService.extract_narrative_from_ending(llm_response.content)
+        narrative = GameMasterService.extract_narrative_from_ending(
+            llm_response.content
+        )
 
         # Update session to completed
         completed_session = session.complete(ending_type)
@@ -105,13 +113,15 @@ class GenerateEndingUseCase:
 
         # Save ending message
         ending_message = GameMessageEntity(
-            id=uuid4(),
+            id=get_uuid7(),
             session_id=session.id,
             role=MessageRole.ASSISTANT,
             content=narrative,
             parsed_response={"ending_type": ending_type.value},
-            token_count=llm_response.usage.total_tokens if llm_response.usage else None,
-            created_at=datetime.utcnow(),
+            token_count=(
+                llm_response.usage.total_tokens if llm_response.usage else None
+            ),
+            created_at=get_utc_datetime(),
         )
         await self._message_repo.create(ending_message)
 
@@ -121,5 +131,5 @@ class GenerateEndingUseCase:
             narrative=narrative,
             total_turns=completed_session.turn_count,
             character_name="",  # TODO: Load from character
-            scenario_name="",   # TODO: Load from scenario
+            scenario_name="",  # TODO: Load from scenario
         )

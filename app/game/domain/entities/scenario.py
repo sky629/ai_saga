@@ -6,15 +6,16 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.common.enums.game_enums import ScenarioDifficulty, ScenarioGenre
+from app.game.domain.value_objects import ScenarioDifficulty, ScenarioGenre
 
 
 class ScenarioEntity(BaseModel):
     """시나리오 도메인 엔티티.
-    
+
     게임 월드/시나리오 템플릿을 정의합니다.
     관리자에 의해 생성되며, 일반적으로 불변입니다.
     """
+
     model_config = {"frozen": True}
 
     id: UUID

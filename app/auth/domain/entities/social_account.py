@@ -1,13 +1,17 @@
 """Social Account Entity."""
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
-from pydantic import BaseModel
+
+from pydantic import BaseModel, Field
+
 from app.auth.domain.value_objects import AuthProvider
+
 
 class SocialAccountEntity(BaseModel):
     """소셜 계정 도메인 엔티티."""
+
     model_config = {"frozen": True}
 
     id: UUID
@@ -21,3 +25,5 @@ class SocialAccountEntity(BaseModel):
     created_at: datetime
     updated_at: datetime
     last_used_at: datetime
+    scope_granted: List[str] = Field(default_factory=list)
+    is_primary: bool = False

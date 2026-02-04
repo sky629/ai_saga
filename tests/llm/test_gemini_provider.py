@@ -3,11 +3,12 @@
 Tests for GeminiProvider using google.genai SDK.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.llm.providers.base import LLMProvider
+import pytest
+
 from app.llm.dto.llm_response import LLMResponse
+from app.llm.providers.base import LLMProvider
 from app.llm.providers.gemini import GeminiProvider
 
 
@@ -26,10 +27,8 @@ class TestGeminiProvider:
                 candidates_token_count=50,
                 total_token_count=150,
             )
-            mock_response.candidates = [
-                MagicMock(finish_reason="STOP")
-            ]
-            
+            mock_response.candidates = [MagicMock(finish_reason="STOP")]
+
             mock_client = MagicMock()
             mock_client.aio.models.generate_content = AsyncMock(
                 return_value=mock_response
@@ -54,7 +53,7 @@ class TestGeminiProvider:
             system_prompt="You are a game master.",
             messages=[{"role": "user", "content": "Look around"}],
         )
-        
+
         assert isinstance(response, LLMResponse)
         assert response.content == "AI generated response"
         assert response.model == "gemini-2.0-flash"
@@ -70,7 +69,7 @@ class TestGeminiProvider:
             messages=[{"role": "user", "content": "Attack the dragon"}],
             temperature=0.9,
         )
-        
+
         # Verify API was called
         mock_client = mock_genai.Client.return_value
         mock_client.aio.models.generate_content.assert_called()
@@ -88,7 +87,7 @@ class TestGeminiProvider:
     ):
         """Should retry on transient API errors using tenacity."""
         mock_client = mock_genai.Client.return_value
-        
+
         mock_success_response = MagicMock()
         mock_success_response.text = "Success after retry"
         mock_success_response.usage_metadata = MagicMock(
@@ -96,36 +95,33 @@ class TestGeminiProvider:
             candidates_token_count=50,
             total_token_count=150,
         )
-        mock_success_response.candidates = [
-            MagicMock(finish_reason="STOP")
-        ]
-        
+        mock_success_response.candidates = [MagicMock(finish_reason="STOP")]
+
         mock_client.aio.models.generate_content = AsyncMock(
             side_effect=[
                 Exception("API rate limit"),
                 mock_success_response,
             ]
         )
-        
+
         response = await provider.generate_response(
             system_prompt="Test",
             messages=[{"role": "user", "content": "Hello"}],
         )
-        
+
         assert response.content == "Success after retry"
         assert mock_client.aio.models.generate_content.call_count == 2
 
     async def test_provider_uses_correct_model_name(self, mock_genai):
         """Should use the correct Gemini model name."""
         provider = GeminiProvider(
-            api_key="test-key",
-            model_name="gemini-2.0-flash"
+            api_key="test-key", model_name="gemini-2.0-flash"
         )
-        
+
         await provider.generate_response(
             system_prompt="Test",
             messages=[{"role": "user", "content": "Hello"}],
         )
-        
+
         # Verify Client was instantiated
         mock_genai.Client.assert_called_with(api_key="test-key")

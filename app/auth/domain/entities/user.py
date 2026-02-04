@@ -3,11 +3,15 @@
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
+
 from pydantic import BaseModel
+
 from app.auth.domain.value_objects import UserLevel
+
 
 class UserEntity(BaseModel):
     """사용자 도메인 엔티티."""
+
     model_config = {"frozen": True}
 
     id: UUID

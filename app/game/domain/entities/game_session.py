@@ -6,15 +6,17 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.common.utils.datetime import get_utc_datetime
 from app.game.domain.value_objects import EndingType, SessionStatus
 
 
 class GameSessionEntity(BaseModel):
     """게임 세션 도메인 엔티티.
-    
+
     불변(frozen) 모델로, 상태 변경 시 새 인스턴스를 반환합니다.
     ORM 모델과 분리되어 순수 비즈니스 로직만 포함합니다.
     """
+
     model_config = {"frozen": True}
 
     id: UUID
@@ -36,18 +38,22 @@ class GameSessionEntity(BaseModel):
         """턴을 1 증가시킨 새 인스턴스 반환."""
         if not self.is_active:
             raise ValueError("Cannot advance turn on inactive session")
-        return self.model_copy(update={
-            "turn_count": self.turn_count + 1,
-            "last_activity_at": datetime.utcnow(),
-        })
+        return self.model_copy(
+            update={
+                "turn_count": self.turn_count + 1,
+                "last_activity_at": get_utc_datetime(),
+            }
+        )
 
     def complete(self, ending: EndingType) -> "GameSessionEntity":
         """게임을 완료 상태로 변경."""
-        return self.model_copy(update={
-            "status": SessionStatus.COMPLETED,
-            "ending_type": ending,
-            "ended_at": datetime.utcnow(),
-        })
+        return self.model_copy(
+            update={
+                "status": SessionStatus.COMPLETED,
+                "ending_type": ending,
+                "ended_at": get_utc_datetime(),
+            }
+        )
 
     def pause(self) -> "GameSessionEntity":
         """게임을 일시정지 상태로 변경."""
@@ -59,10 +65,12 @@ class GameSessionEntity(BaseModel):
         """일시정지된 게임을 재개."""
         if self.status != SessionStatus.PAUSED:
             raise ValueError("Can only resume paused session")
-        return self.model_copy(update={
-            "status": SessionStatus.ACTIVE,
-            "last_activity_at": datetime.utcnow(),
-        })
+        return self.model_copy(
+            update={
+                "status": SessionStatus.ACTIVE,
+                "last_activity_at": get_utc_datetime(),
+            }
+        )
 
     def update_location(self, new_location: str) -> "GameSessionEntity":
         """현재 위치 업데이트."""

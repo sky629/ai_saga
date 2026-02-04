@@ -6,7 +6,6 @@ Contains system prompts and action prompts for the LLM game master.
 from dataclasses import dataclass, field
 from typing import Optional
 
-
 SYSTEM_PROMPT_TEMPLATE = """당신은 텍스트 기반 MUD 게임의 게임 마스터(Game Master)입니다.
 
 ## 시나리오

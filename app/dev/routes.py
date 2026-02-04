@@ -1,31 +1,34 @@
 """Development-only routes for testing."""
 
-import uuid
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import Depends
 
-from app.auth.repositories.token_repository import token_repository
-from app.auth.models.postgres_models import User
+from app.auth.container import AuthContainer
+from app.auth.infrastructure.persistence.models.user_models import User
 from app.common.storage.postgres import postgres_storage
+from app.common.utils.id_generator import get_uuid7
+from app.game.domain.value_objects import ScenarioDifficulty, ScenarioGenre
+from app.game.infrastructure.persistence.models.game_models import Scenario
 from config.settings import settings
 
-
 dev_router = APIRouter(
-    prefix="/api/dev",
+    prefix="/api/v1/dev",
     tags=["dev"],
 )
 
 
 class DevTokenRequest(BaseModel):
     """Request for development token."""
+
     email: str = "dev@test.com"
     name: str = "Dev User"
 
 
 class DevTokenResponse(BaseModel):
     """Response with development token."""
+
     access_token: str
     token_type: str = "bearer"
     expires_in: int
@@ -40,7 +43,7 @@ async def get_dev_token(
 ):
     """
     Generate a development JWT token for testing.
-    
+
     ⚠️ WARNING: This endpoint is for development/testing only.
     It will NOT work in production environment.
     """
@@ -50,18 +53,17 @@ async def get_dev_token(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This endpoint is disabled in production",
         )
-    
+
     # Get or create dev user
-    from sqlalchemy import select
     result = await db.execute(
         select(User).where(User.email == request.email.lower())
     )
     user = result.scalar_one_or_none()
-    
+
     if not user:
         # Create dev user
         user = User(
-            id=uuid.uuid4(),
+            id=get_uuid7(),
             email=request.email.lower(),
             name=request.name,
             email_verified=True,
@@ -71,14 +73,18 @@ async def get_dev_token(
         db.add(user)
         await db.commit()
         await db.refresh(user)
-    
+
     # Generate JWT token
-    token_data = token_repository.create_access_token(
+    # Generate JWT token
+    container = AuthContainer(db)
+    token_service = container.token_service()
+
+    token_data = token_service.create_access_token(
         user_id=user.id,
         email=user.email,
         user_level=user.user_level,
     )
-    
+
     return DevTokenResponse(
         access_token=token_data["access_token"],
         token_type=token_data["token_type"],
@@ -95,7 +101,7 @@ async def dev_health():
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This endpoint is disabled in production",
         )
-    
+
     return {
         "status": "healthy",
         "environment": settings.environment,
@@ -105,6 +111,7 @@ async def dev_health():
 
 class SeedScenariosResponse(BaseModel):
     """Response for scenario seeding."""
+
     message: str
     scenarios_created: int
 
@@ -115,7 +122,7 @@ async def seed_scenarios(
 ):
     """
     Seed test scenarios for development.
-    
+
     ⚠️ WARNING: This endpoint is for development/testing only.
     """
     if settings.is_prod():
@@ -123,10 +130,7 @@ async def seed_scenarios(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This endpoint is disabled in production",
         )
-    
-    from app.game.models.game_models import Scenario
-    from sqlalchemy import select
-    
+
     # Check if scenarios already exist
     result = await db.execute(select(Scenario).limit(1))
     if result.scalar_one_or_none():
@@ -134,10 +138,8 @@ async def seed_scenarios(
             message="Scenarios already exist",
             scenarios_created=0,
         )
-    
+
     # Create test scenarios
-    from app.common.enums.game_enums import ScenarioDifficulty, ScenarioGenre
-    
     scenarios = [
         Scenario(
             name="용사의 여정",
@@ -179,15 +181,14 @@ async def seed_scenarios(
             is_active=True,
         ),
     ]
-    
-    from uuid_utils import uuid7
+
     for scenario in scenarios:
-        scenario.id = uuid7()
+        scenario.id = get_uuid7()
         db.add(scenario)
         await db.flush()  # Force individual insert
-    
+
     await db.commit()
-    
+
     return SeedScenariosResponse(
         message="Test scenarios created successfully",
         scenarios_created=len(scenarios),

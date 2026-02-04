@@ -21,7 +21,9 @@ class RefreshTokenRequest(BaseModel):
 class GoogleTokenRefreshRequest(BaseModel):
     """Google token refresh request model."""
 
-    refresh_token: Optional[str] = Field(None, description="Google refresh token")
+    refresh_token: Optional[str] = Field(
+        None, description="Google refresh token"
+    )
 
 
 class UserUpdateRequest(BaseModel):
@@ -30,4 +32,6 @@ class UserUpdateRequest(BaseModel):
     name: Optional[str] = Field(
         None, min_length=1, max_length=100, description="User display name"
     )
-    profile_image_url: Optional[str] = Field(None, description="Profile image URL")
+    profile_image_url: Optional[str] = Field(
+        None, description="Profile image URL"
+    )

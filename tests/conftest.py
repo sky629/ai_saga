@@ -21,13 +21,14 @@ def event_loop():
 @pytest.fixture
 def app():
     """Create FastAPI application for testing.
-    
+
     Requires environment variables to be set.
     Skip this fixture for unit tests that don't need the full app.
     """
     # Lazy import to avoid loading settings at module level
     from app.common.logging import CONSOLE_LOGGING_CONFIG
     from app.main import create_app
+
     return create_app(CONSOLE_LOGGING_CONFIG)
 
 
@@ -35,6 +36,7 @@ def app():
 def client(app):
     """Create test client."""
     from fastapi.testclient import TestClient
+
     return TestClient(app)
 
 
@@ -42,5 +44,6 @@ def client(app):
 async def async_client(app):
     """Create async test client."""
     from httpx import AsyncClient
+
     async with AsyncClient(app=app, base_url="http://test") as client:
         yield client

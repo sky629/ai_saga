@@ -7,8 +7,6 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import __version__
 from app.auth.presentation.routes.auth import auth_public_router_v1
-from app.dev.routes import dev_router
-from app.game.presentation.routes.game_routes import game_router_v1
 from app.common.exception import APIException
 from app.common.logging import (
     CONSOLE_LOGGING_CONFIG,
@@ -29,6 +27,8 @@ from app.common.middleware.rate_limiting import (
 )
 from app.common.storage.postgres import postgres_storage
 from app.common.storage.redis import pools
+from app.dev.routes import dev_router
+from app.game.presentation.routes.game_routes import game_router_v1
 from config.settings import settings
 
 router = APIRouter()
@@ -106,7 +106,9 @@ def create_app(logging_configuration: dict):
     # Add exception handlers
     _app.add_exception_handler(APIException, api_exception_handler)
     _app.add_exception_handler(HTTPException, http_exception_handler)
-    _app.add_exception_handler(StarletteHTTPException, starlette_http_exception_handler)
+    _app.add_exception_handler(
+        StarletteHTTPException, starlette_http_exception_handler
+    )
     _app.add_exception_handler(Exception, general_exception_handler)
 
     # Add rate limit exceeded handler

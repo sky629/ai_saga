@@ -4,12 +4,13 @@
 기존 GameService.start_game()의 비즈니스 로직을 분리.
 """
 
-from datetime import datetime
 from typing import Optional
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.common.utils.datetime import get_utc_datetime
+from app.common.utils.id_generator import get_uuid7
 from app.game.application.ports import (
     CharacterRepositoryInterface,
     GameMessageRepositoryInterface,
@@ -19,16 +20,16 @@ from app.game.application.ports import (
 )
 from app.game.domain.entities import GameMessageEntity, GameSessionEntity
 from app.game.domain.value_objects import MessageRole, SessionStatus
-from app.game.dto.response import GameSessionResponse
+from app.game.presentation.routes.schemas.response import GameSessionResponse
 from app.llm.prompts.game_master import GameMasterPrompt
 from config.settings import settings
 
 
 class StartGameInput(BaseModel):
     """Use Case 입력 DTO."""
+
     model_config = {"frozen": True}
-    
-    user_id: UUID
+
     character_id: UUID
     scenario_id: UUID
     max_turns: Optional[int] = None
@@ -36,7 +37,7 @@ class StartGameInput(BaseModel):
 
 class StartGameUseCase:
     """게임 시작 유스케이스.
-    
+
     Single Responsibility: 새 게임 세션을 생성하고
     초기 내러티브를 생성하는 것만 담당합니다.
     """
@@ -55,11 +56,15 @@ class StartGameUseCase:
         self._message_repo = message_repository
         self._llm = llm_service
 
-    async def execute(self, input_data: StartGameInput) -> GameSessionResponse:
+    async def execute(
+        self, user_id: UUID, input_data: StartGameInput
+    ) -> GameSessionResponse:
         """유스케이스 실행."""
         # 1. Validate character ownership
-        character = await self._character_repo.get_by_id(input_data.character_id)
-        if not character or character.user_id != input_data.user_id:
+        character = await self._character_repo.get_by_id(
+            input_data.character_id
+        )
+        if not character or character.user_id != user_id:
             raise ValueError("Character not found or does not belong to user")
 
         # 2. Validate scenario
@@ -68,7 +73,9 @@ class StartGameUseCase:
             raise ValueError("Scenario not found or inactive")
 
         # 3. Check for existing active session
-        existing = await self._session_repo.get_active_by_character(character.id)
+        existing = await self._session_repo.get_active_by_character(
+            character.id
+        )
         if existing:
             raise ValueError("Character already has an active session")
 
@@ -76,9 +83,9 @@ class StartGameUseCase:
         max_turns = input_data.max_turns or settings.game_max_turns
 
         # 5. Create session entity
-        now = datetime.utcnow()
+        now = get_utc_datetime()
         session = GameSessionEntity(
-            id=uuid4(),
+            id=get_uuid7(),
             character_id=character.id,
             scenario_id=scenario.id,
             current_location=scenario.initial_location,
@@ -116,7 +123,7 @@ class StartGameUseCase:
         self,
         session: GameSessionEntity,
         character,  # CharacterEntity
-        scenario,   # ScenarioEntity
+        scenario,  # ScenarioEntity
     ) -> None:
         """초기 게임 내러티브 생성."""
         prompt = GameMasterPrompt(
@@ -130,16 +137,23 @@ class StartGameUseCase:
 
         response = await self._llm.generate_response(
             system_prompt=prompt.system_prompt,
-            messages=[{"role": "user", "content": "게임을 시작합니다. 현재 상황을 묘사해주세요."}],
+            messages=[
+                {
+                    "role": "user",
+                    "content": "게임을 시작합니다. 현재 상황을 묘사해주세요.",
+                }
+            ],
         )
 
         # Save initial message
         initial_message = GameMessageEntity(
-            id=uuid4(),
+            id=get_uuid7(),
             session_id=session.id,
             role=MessageRole.ASSISTANT,
             content=response.content,
-            token_count=response.usage.total_tokens if response.usage else None,
-            created_at=datetime.utcnow(),
+            token_count=(
+                response.usage.total_tokens if response.usage else None
+            ),
+            created_at=get_utc_datetime(),
         )
         await self._message_repo.create(initial_message)

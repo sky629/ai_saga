@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 class CharacterStats(BaseModel):
     """캐릭터 스탯 Value Object."""
+
     model_config = {"frozen": True}
 
     hp: int = Field(ge=0, default=100)
@@ -27,11 +28,13 @@ class CharacterStats(BaseModel):
 
     def level_up(self) -> "CharacterStats":
         """레벨업한 새 스탯 반환."""
-        return self.model_copy(update={
-            "level": self.level + 1,
-            "max_hp": self.max_hp + 10,
-            "hp": self.max_hp + 10,  # Full heal on level up
-        })
+        return self.model_copy(
+            update={
+                "level": self.level + 1,
+                "max_hp": self.max_hp + 10,
+                "hp": self.max_hp + 10,  # Full heal on level up
+            }
+        )
 
     @property
     def is_alive(self) -> bool:
@@ -41,9 +44,10 @@ class CharacterStats(BaseModel):
 
 class CharacterEntity(BaseModel):
     """캐릭터 도메인 엔티티.
-    
+
     플레이어 캐릭터의 핵심 속성과 비즈니스 로직을 포함합니다.
     """
+
     model_config = {"frozen": True}
 
     id: UUID

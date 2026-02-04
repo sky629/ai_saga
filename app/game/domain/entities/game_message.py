@@ -11,9 +11,10 @@ from app.game.domain.value_objects import MessageRole
 
 class GameMessageEntity(BaseModel):
     """게임 메시지 도메인 엔티티.
-    
+
     게임 세션 내의 개별 메시지(플레이어 액션 또는 AI 응답)를 표현합니다.
     """
+
     model_config = {"frozen": True}
 
     id: UUID
@@ -45,4 +46,8 @@ class GameMessageEntity(BaseModel):
     @property
     def summary(self) -> str:
         """메시지 요약 (처음 100자)."""
-        return self.content[:100] + "..." if len(self.content) > 100 else self.content
+        return (
+            self.content[:100] + "..."
+            if len(self.content) > 100
+            else self.content
+        )

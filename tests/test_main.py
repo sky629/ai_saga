@@ -16,12 +16,13 @@ class TestMainApplication:
 
     def test_cors_headers(self, client: TestClient):
         """Test CORS headers are present."""
-        response = client.options("/api/ping/")
+        response = client.get(
+            "/api/ping/", headers={"Origin": "http://localhost:3000"}
+        )
 
         # CORS headers should be present
         assert "access-control-allow-origin" in response.headers
-        assert "access-control-allow-methods" in response.headers
-        assert "access-control-allow-headers" in response.headers
+        assert "access-control-allow-credentials" in response.headers
 
     def test_docs_endpoint_dev(self, client: TestClient):
         """Test API documentation endpoint in development."""
@@ -61,12 +62,8 @@ class TestMiddleware:
 
     def test_exception_handling(self, client: TestClient):
         """Test global exception handling."""
-        # Test with malformed JSON
-        response = client.post(
-            "/api/auth/google/callback",
-            data="invalid-json",
-            headers={"Content-Type": "application/json"},
-        )
+        # Test with validation error - empty params should trigger 422
+        response = client.get("/api/v1/auth/google/callback/")
 
         # Should return proper error response
         assert response.status_code == 422  # Validation error

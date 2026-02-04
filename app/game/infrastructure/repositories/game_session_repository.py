@@ -1,6 +1,5 @@
 """GameSession Repository Implementation."""
 
-from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -10,14 +9,13 @@ from sqlalchemy.orm import selectinload
 
 from app.game.application.ports import GameSessionRepositoryInterface
 from app.game.domain.entities import GameSessionEntity
-from app.game.domain.value_objects import SessionStatus
 from app.game.infrastructure.persistence.mappers import GameSessionMapper
 from app.game.infrastructure.persistence.models.game_models import GameSession
 
 
 class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
     """GameSession 저장소 구현체.
-    
+
     SQLAlchemy를 사용하여 실제 DB와 통신합니다.
     도메인 엔티티와 ORM 모델 간 변환에 Mapper를 사용합니다.
     """
@@ -36,13 +34,15 @@ class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
             .where(GameSession.id == session_id)
         )
         orm = result.scalar_one_or_none()
-        
+
         if orm is None:
             return None
-        
+
         return GameSessionMapper.to_entity(orm)
 
-    async def get_active_by_character(self, character_id: UUID) -> Optional[GameSessionEntity]:
+    async def get_active_by_character(
+        self, character_id: UUID
+    ) -> Optional[GameSessionEntity]:
         """캐릭터의 활성 세션 조회."""
         result = await self._db.execute(
             select(GameSession).where(
@@ -51,10 +51,10 @@ class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
             )
         )
         orm = result.scalar_one_or_none()
-        
+
         if orm is None:
             return None
-        
+
         return GameSessionMapper.to_entity(orm)
 
     async def save(self, session: GameSessionEntity) -> GameSessionEntity:
@@ -76,7 +76,9 @@ class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
                 status=session.status.value,
                 turn_count=session.turn_count,
                 max_turns=session.max_turns,
-                ending_type=session.ending_type.value if session.ending_type else None,
+                ending_type=(
+                    session.ending_type.value if session.ending_type else None
+                ),
                 started_at=session.started_at,
                 ended_at=session.ended_at,
                 last_activity_at=session.last_activity_at,
@@ -90,14 +92,17 @@ class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
 
         await self._db.commit()
         await self._db.refresh(orm)
-        
+
         return GameSessionMapper.to_entity(orm)
 
     async def delete(self, session_id: UUID) -> None:
         """세션 삭제."""
         from sqlalchemy import delete as sql_delete
-        from app.game.infrastructure.persistence.models.game_models import GameMessage
-        from app.game.infrastructure.persistence.models.game_models import GameSession
+
+        from app.game.infrastructure.persistence.models.game_models import (
+            GameMessage,
+            GameSession,
+        )
 
         # Delete related messages first
         await self._db.execute(

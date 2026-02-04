@@ -9,7 +9,9 @@ from app.common.logging import error_logger
 from config.settings import settings
 
 
-async def api_exception_handler(request: Request, exc: APIException) -> JSONResponse:
+async def api_exception_handler(
+    request: Request, exc: APIException
+) -> JSONResponse:
     """Handle custom API exceptions."""
     error_logger.warning(
         f"API Exception: {exc.message}",
@@ -24,7 +26,9 @@ async def api_exception_handler(request: Request, exc: APIException) -> JSONResp
     return exc.construct_response()
 
 
-async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+async def http_exception_handler(
+    request: Request, exc: HTTPException
+) -> JSONResponse:
     """Handle FastAPI HTTP exceptions."""
     error_logger.warning(
         f"HTTP Exception: {exc.detail}",
@@ -61,7 +65,9 @@ async def starlette_http_exception_handler(
     )
 
 
-async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+async def general_exception_handler(
+    request: Request, exc: Exception
+) -> JSONResponse:
     """Handle unexpected exceptions."""
     error_logger.error(
         f"Unhandled Exception: {str(exc)}",
@@ -76,6 +82,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
     content = {"message": "Internal server error"}
     if not settings.is_prod():
         import traceback
+
         content["detail"] = str(exc)
         content["traceback"] = traceback.format_exc().split("\n")
 

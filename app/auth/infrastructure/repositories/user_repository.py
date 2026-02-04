@@ -9,9 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.application.ports import UserRepositoryInterface
 from app.auth.domain.entities import UserEntity
-from app.auth.domain.value_objects import UserLevel
 from app.auth.infrastructure.persistence.mappers import UserMapper
-from app.auth.infrastructure.persistence.models.postgres_models import User as UserModel
+from app.auth.infrastructure.persistence.models.user_models import (
+    User as UserModel,
+)
 
 
 class UserRepositoryImpl(UserRepositoryInterface):
@@ -21,17 +22,23 @@ class UserRepositoryImpl(UserRepositoryInterface):
         self._db = db
 
     async def get_by_id(self, user_id: UUID) -> Optional[UserEntity]:
-        result = await self._db.execute(select(UserModel).where(UserModel.id == user_id))
+        result = await self._db.execute(
+            select(UserModel).where(UserModel.id == user_id)
+        )
         orm = result.scalar_one_or_none()
         return UserMapper.to_entity(orm) if orm else None
 
     async def get_by_email(self, email: str) -> Optional[UserEntity]:
-        result = await self._db.execute(select(UserModel).where(UserModel.email == email))
+        result = await self._db.execute(
+            select(UserModel).where(UserModel.email == email)
+        )
         orm = result.scalar_one_or_none()
         return UserMapper.to_entity(orm) if orm else None
 
     async def save(self, user: UserEntity) -> UserEntity:
-        result = await self._db.execute(select(UserModel).where(UserModel.id == user.id))
+        result = await self._db.execute(
+            select(UserModel).where(UserModel.id == user.id)
+        )
         orm = result.scalar_one_or_none()
 
         if orm is None:
@@ -59,7 +66,9 @@ class UserRepositoryImpl(UserRepositoryInterface):
         await self._db.refresh(orm)
         return UserMapper.to_entity(orm)
 
-    async def update_last_login(self, user_id: UUID, login_at: datetime) -> None:
+    async def update_last_login(
+        self, user_id: UUID, login_at: datetime
+    ) -> None:
         stmt = (
             update(UserModel)
             .where(UserModel.id == user_id)

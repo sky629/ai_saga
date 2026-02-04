@@ -14,8 +14,8 @@ from tenacity import (
 )
 
 from app.common.exception import TooManyRequests
-from app.llm.providers.base import LLMProvider
 from app.llm.dto.llm_response import LLMResponse, TokenUsage
+from app.llm.providers.base import LLMProvider
 
 
 class GeminiProvider(LLMProvider):
@@ -40,8 +40,11 @@ class GeminiProvider(LLMProvider):
         self.model_name = model_name
         masked_key = api_key[:5] + "*" * 5 if api_key else "None"
         import logging
+
         logger = logging.getLogger("uvicorn")
-        logger.info(f"DEBUG: GeminiProvider initialized with API Key: {masked_key}")
+        logger.info(
+            f"DEBUG: GeminiProvider initialized with API Key: {masked_key}"
+        )
 
     @retry(
         stop=stop_after_attempt(3),
@@ -85,15 +88,19 @@ class GeminiProvider(LLMProvider):
             )
         except ClientError as e:
             import logging
+
             logger = logging.getLogger("uvicorn")
             logger.warning(f"DEBUG: Gemini ClientError: {e}")
-            
+
             # Check for 429 Too Many Requests or quota exhaustion
             if e.code == 429 or "RESOURCE_EXHAUSTED" in str(e):
-                raise TooManyRequests(message="Gemini API Quota Exceeded. Please try again later.")
+                raise TooManyRequests(
+                    message="Gemini API Quota Exceeded. Please try again later."
+                )
             raise e
         except Exception as e:
             import logging
+
             logger = logging.getLogger("uvicorn")
             logger.error(f"DEBUG: Gemini API Error: {e}", exc_info=True)
             raise e
@@ -103,7 +110,8 @@ class GeminiProvider(LLMProvider):
         if response.usage_metadata:
             usage = TokenUsage(
                 prompt_tokens=response.usage_metadata.prompt_token_count or 0,
-                completion_tokens=response.usage_metadata.candidates_token_count or 0,
+                completion_tokens=response.usage_metadata.candidates_token_count
+                or 0,
                 total_tokens=response.usage_metadata.total_token_count or 0,
             )
 
@@ -137,9 +145,11 @@ class GeminiProvider(LLMProvider):
         # Conversation messages
         for msg in messages:
             role = "user" if msg["role"] == "user" else "model"
-            contents.append(types.Content(
-                role=role,
-                parts=[types.Part(text=msg["content"])],
-            ))
+            contents.append(
+                types.Content(
+                    role=role,
+                    parts=[types.Part(text=msg["content"])],
+                )
+            )
 
         return contents

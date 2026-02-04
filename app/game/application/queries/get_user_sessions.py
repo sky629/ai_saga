@@ -7,18 +7,22 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.game.infrastructure.persistence.models.game_models import Character, GameSession
+from app.game.infrastructure.persistence.models.game_models import (
+    Character,
+    GameSession,
+)
 
 
 class SessionListItem(BaseModel):
     """세션 목록 항목 DTO."""
-    model_config = {"frozen": True}
-    
+
+    model_config = ConfigDict(frozen=True, from_attributes=True)
+
     id: UUID
     character_name: str
     scenario_name: str
@@ -32,7 +36,7 @@ class SessionListItem(BaseModel):
 
 class GetUserSessionsQuery:
     """사용자 세션 목록 조회 쿼리.
-    
+
     CQRS Query: 읽기 전용, 상태 변경 없음.
     """
 
@@ -44,6 +48,7 @@ class GetUserSessionsQuery:
         user_id: UUID,
         status_filter: Optional[str] = None,
         limit: int = 20,
+        cursor: Optional[UUID] = None,
     ) -> list[SessionListItem]:
         """사용자의 게임 세션 목록 조회."""
         # 사용자의 캐릭터 ID 조회
@@ -63,12 +68,37 @@ class GetUserSessionsQuery:
                 selectinload(GameSession.scenario),
             )
             .where(GameSession.character_id.in_(character_ids))
-            .order_by(GameSession.last_activity_at.desc())
-            .limit(limit)
+            .order_by(
+                GameSession.last_activity_at.desc(), GameSession.id.desc()
+            )
         )
+
+        # Cursor 기반 필터링
+        if cursor:
+            # cursor보다 오래된 세션만 조회
+            cursor_session = await self._db.execute(
+                select(GameSession).where(GameSession.id == cursor)
+            )
+            cursor_obj = cursor_session.scalar_one_or_none()
+            if cursor_obj:
+                query = query.where(
+                    (
+                        GameSession.last_activity_at
+                        < cursor_obj.last_activity_at
+                    )
+                    | (
+                        (
+                            GameSession.last_activity_at
+                            == cursor_obj.last_activity_at
+                        )
+                        & (GameSession.id < cursor)
+                    )
+                )
 
         if status_filter:
             query = query.where(GameSession.status == status_filter)
+
+        query = query.limit(limit + 1)  # +1로 has_more 확인
 
         result = await self._db.execute(query)
         sessions = result.scalars().all()
@@ -88,7 +118,9 @@ class GetUserSessionsQuery:
             for s in sessions
         ]
 
-    async def get_active_session(self, user_id: UUID) -> Optional[SessionListItem]:
+    async def get_active_session(
+        self, user_id: UUID
+    ) -> Optional[SessionListItem]:
         """사용자의 활성 세션 조회."""
         sessions = await self.execute(user_id, status_filter="active", limit=1)
         return sessions[0] if sessions else None

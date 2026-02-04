@@ -4,10 +4,6 @@ ORM 모델과 도메인 엔티티 간 변환을 담당합니다.
 인프라 레이어에서만 사용되며, 도메인 레이어는 ORM에 대해 알지 못합니다.
 """
 
-from datetime import datetime
-from typing import Optional
-from uuid import UUID
-
 from app.game.domain.entities import (
     CharacterEntity,
     GameMessageEntity,
@@ -15,7 +11,11 @@ from app.game.domain.entities import (
     ScenarioEntity,
 )
 from app.game.domain.entities.character import CharacterStats
-from app.game.domain.value_objects import EndingType, MessageRole, SessionStatus
+from app.game.domain.value_objects import (
+    EndingType,
+    MessageRole,
+    SessionStatus,
+)
 from app.game.infrastructure.persistence.models.game_models import (
     Character,
     GameMessage,
@@ -58,7 +58,9 @@ class GameSessionMapper:
             "status": entity.status.value,
             "turn_count": entity.turn_count,
             "max_turns": entity.max_turns,
-            "ending_type": entity.ending_type.value if entity.ending_type else None,
+            "ending_type": (
+                entity.ending_type.value if entity.ending_type else None
+            ),
             "ended_at": entity.ended_at,
             "last_activity_at": entity.last_activity_at,
         }
@@ -102,7 +104,10 @@ class ScenarioMapper:
     @staticmethod
     def to_entity(orm: Scenario) -> ScenarioEntity:
         """ORM 모델을 도메인 엔티티로 변환."""
-        from app.common.enums.game_enums import ScenarioDifficulty, ScenarioGenre
+        from app.game.domain.value_objects import (
+            ScenarioDifficulty,
+            ScenarioGenre,
+        )
 
         return ScenarioEntity(
             id=orm.id,

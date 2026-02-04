@@ -1,11 +1,31 @@
-import uuid
 from typing import List, Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.routing import APIRoute
 
 from app.auth import logger
-from app.auth.infrastructure.persistence.models.postgres_models import User
+from app.auth.application.use_cases.handle_oauth_callback import (
+    OAuthCallbackInput,
+)
+from app.auth.application.use_cases.logout import LogoutInput
+from app.auth.application.use_cases.refresh_token import RefreshTokenInput
+from app.auth.application.use_cases.update_user_profile import (
+    UpdateUserProfileInput,
+)
+from app.auth.dependencies import (
+    DisconnectSocialAccountDep,
+    GetSocialAccountsDep,
+    HandleOAuthCallbackDep,
+    LogoutDep,
+    RefreshGoogleTokenDep,
+    RefreshTokenDep,
+    UpdateUserProfileDep,
+    get_auth_container,
+    get_current_user,
+)
+from app.auth.domain.value_objects import AuthProvider
+from app.auth.infrastructure.persistence.models.user_models import User
 from app.auth.presentation.routes.schemas.request import (
     GoogleCallbackRequest,
     GoogleTokenRefreshRequest,
@@ -20,9 +40,6 @@ from app.auth.presentation.routes.schemas.response import (
     TokenResponse,
     UserResponse,
 )
-from app.auth.services.oauth_service import oauth_service
-from app.auth.services.token_service import get_current_user
-from app.auth.services.user_service import user_service
 from app.common.exception import APIException
 from app.common.middleware.rate_limiting import RATE_LIMITS, limiter
 
@@ -33,13 +50,18 @@ auth_public_router_v1 = APIRouter(
 )
 
 
-@auth_public_router_v1.get("/google/login/", response_model=GoogleLoginResponse)
+@auth_public_router_v1.get(
+    "/google/login/", response_model=GoogleLoginResponse
+)
 @limiter.limit(RATE_LIMITS["oauth"])
-async def google_login(request: Request):
+async def google_login(
+    request: Request, container=Depends(get_auth_container)
+):
     """Initialize Google OAuth login flow."""
     try:
-        result = await oauth_service.initiate_google_login()
-        return GoogleLoginResponse(auth_url=result["auth_url"], state=result["state"])
+        oauth_provider = container.google_auth_adapter()
+        auth_url, state = await oauth_provider.generate_auth_url()
+        return GoogleLoginResponse(auth_url=auth_url, state=state)
     except APIException:
         raise
     except Exception as e:
@@ -54,25 +76,26 @@ async def google_login(request: Request):
 @limiter.limit(RATE_LIMITS["oauth"])
 async def google_callback(
     request: Request,
+    use_case: HandleOAuthCallbackDep,
     callback_request: GoogleCallbackRequest = Depends(GoogleCallbackRequest),
 ):
     """Handle Google OAuth callback and authenticate user."""
     try:
-        print(callback_request.code)
-        print(callback_request.state)
-
-        user, tokens, is_new_user = await oauth_service.handle_google_callback(
-            callback_request.code, callback_request.state
+        input_data = OAuthCallbackInput(
+            code=callback_request.code,
+            state=callback_request.state,
+            provider=AuthProvider.GOOGLE,
         )
-
-        print(user)
-        print(tokens)
-        print(is_new_user)
+        result = await use_case.execute(input_data)
 
         return LoginResponse(
-            user=UserResponse.model_validate(user),
-            tokens=tokens,
-            is_new_user=is_new_user,
+            user=UserResponse.model_validate(result.user),
+            tokens=TokenResponse(
+                access_token=result.access_token,
+                refresh_token=result.refresh_token,
+                expires_in=result.expires_in,
+            ),
+            is_new_user=result.is_new_user,
         )
     except APIException:
         raise
@@ -86,11 +109,22 @@ async def google_callback(
 
 @auth_public_router_v1.post("/refresh/", response_model=TokenResponse)
 @limiter.limit(RATE_LIMITS["auth"])
-async def refresh_token(token_request: RefreshTokenRequest, request: Request):
+async def refresh_token(
+    token_request: RefreshTokenRequest,
+    use_case: RefreshTokenDep,
+    request: Request,
+):
     """Refresh JWT access token using refresh token."""
     try:
-        new_tokens = await oauth_service.refresh_jwt_token(token_request.refresh_token)
-        return new_tokens
+        input_data = RefreshTokenInput(
+            refresh_token=token_request.refresh_token
+        )
+        result = await use_case.execute(input_data)
+        return TokenResponse(
+            access_token=result.access_token,
+            token_type=result.token_type,
+            expires_in=result.expires_in,
+        )
     except APIException:
         raise
     except Exception as e:
@@ -104,11 +138,12 @@ async def refresh_token(token_request: RefreshTokenRequest, request: Request):
 @auth_public_router_v1.post("/google/refresh/", response_model=dict)
 async def refresh_google_token(
     request: GoogleTokenRefreshRequest,
+    use_case: RefreshGoogleTokenDep,
     current_user: User = Depends(get_current_user),
 ):
     """Refresh Google access token for current user."""
     try:
-        new_tokens = await oauth_service.refresh_google_token(current_user.id)
+        new_tokens = await use_case.execute(current_user.id)
         return {
             "message": "Google token refreshed successfully",
             "expires_in": new_tokens.get("expires_in"),
@@ -125,18 +160,21 @@ async def refresh_google_token(
 
 @auth_public_router_v1.post("/logout/", response_model=MessageResponse)
 async def logout(
+    use_case: LogoutDep,
     current_user: User = Depends(get_current_user),
     authorization: Optional[str] = Header(None),
 ):
     """Logout current user and invalidate tokens."""
     try:
-        # Extract token from Authorization header
         token = None
         if authorization and authorization.startswith("Bearer "):
             token = authorization.split(" ")[1]
 
         if token:
-            await oauth_service.logout_user(current_user.id, token)
+            input_data = LogoutInput(
+                user_id=current_user.id, access_token=token
+            )
+            await use_case.execute(input_data)
 
         return MessageResponse(message="Successfully logged out")
     except APIException:
@@ -161,16 +199,17 @@ async def get_current_user_info(
 @limiter.limit(RATE_LIMITS["user_update"])
 async def update_current_user(
     update_request: UserUpdateRequest,
+    use_case: UpdateUserProfileDep,
     request: Request,
     current_user: User = Depends(get_current_user),
 ):
     """Update current user profile information."""
     try:
-        updated_user = await user_service.update_user_profile(
-            current_user.id,
+        input_data = UpdateUserProfileInput(
             name=update_request.name,
             profile_image_url=update_request.profile_image_url,
         )
+        updated_user = await use_case.execute(current_user.id, input_data)
         return UserResponse.model_validate(updated_user)
     except APIException:
         raise
@@ -186,17 +225,17 @@ async def update_current_user(
     "/self/social-accounts/", response_model=List[SocialAccountResponse]
 )
 async def get_user_social_accounts(
+    query: GetSocialAccountsDep,
     current_user: User = Depends(get_current_user),
     provider: Optional[str] = None,
 ):
     """Get current user's connected social accounts."""
     try:
-        social_accounts = await user_service.get_user_social_accounts(
-            current_user.id, provider
-        )
+        social_accounts = await query.execute(current_user.id, provider)
 
         return [
-            SocialAccountResponse.model_validate(account) for account in social_accounts
+            SocialAccountResponse.model_validate(account)
+            for account in social_accounts
         ]
     except APIException:
         raise
@@ -212,18 +251,20 @@ async def get_user_social_accounts(
     "/self/social-accounts/{account_id}/", response_model=MessageResponse
 )
 async def disconnect_social_account(
-    account_id: str, current_user: User = Depends(get_current_user)
+    account_id: str,
+    use_case: DisconnectSocialAccountDep,
+    current_user: User = Depends(get_current_user),
 ):
     """Disconnect a social account from current user."""
     try:
-        account_uuid = uuid.UUID(account_id)
+        account_uuid = UUID(account_id)
 
-        success = await user_service.disconnect_social_account(
-            current_user.id, account_uuid
-        )
+        success = await use_case.execute(current_user.id, account_uuid)
 
         if success:
-            return MessageResponse(message="Social account disconnected successfully")
+            return MessageResponse(
+                message="Social account disconnected successfully"
+            )
         else:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -241,27 +282,4 @@ async def disconnect_social_account(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to disconnect social account",
-        )
-
-
-@auth_public_router_v1.delete("/self/", response_model=MessageResponse)
-async def delete_current_user(current_user: User = Depends(get_current_user)):
-    """Delete current user account permanently."""
-    try:
-        success = await user_service.delete_user(current_user.id)
-
-        if success:
-            return MessageResponse(message="User account deleted successfully")
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to delete user account",
-            )
-    except APIException:
-        raise
-    except Exception as e:
-        logger.exception(e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Account deletion failed",
         )

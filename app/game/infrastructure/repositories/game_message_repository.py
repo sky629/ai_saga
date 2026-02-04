@@ -1,6 +1,6 @@
 """GameMessage Repository Implementation."""
 
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,30 +8,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.game.application.ports import GameMessageRepositoryInterface
 from app.game.domain.entities import GameMessageEntity
 from app.game.infrastructure.persistence.mappers import GameMessageMapper
-from app.game.infrastructure.persistence.models.game_models import GameMessage
+from app.game.infrastructure.persistence.models import GameMessage
 
 
 class GameMessageRepositoryImpl(GameMessageRepositoryInterface):
-    """GameMessage 저장소 구현체."""
+    """게임 메시지 저장소 구현."""
 
-    def __init__(self, db: AsyncSession):
-        self._db = db
+    def __init__(self, session: AsyncSession):
+        self._db = session
 
     async def create(self, message: GameMessageEntity) -> GameMessageEntity:
         """메시지 생성."""
         orm = GameMessage(
-            id=message.id if message.id else uuid4(),
+            id=message.id,
             session_id=message.session_id,
             role=message.role.value,
             content=message.content,
             parsed_response=message.parsed_response,
             token_count=message.token_count,
-            created_at=message.created_at,
         )
         self._db.add(orm)
         await self._db.commit()
         await self._db.refresh(orm)
-        
+
         return GameMessageMapper.to_entity(orm)
 
     async def get_recent_messages(
@@ -45,6 +44,8 @@ class GameMessageRepositoryImpl(GameMessageRepositoryInterface):
             .limit(limit)
         )
         orms = result.scalars().all()
-        
+
         # 역순으로 정렬하여 시간순 반환
-        return [GameMessageMapper.to_entity(orm) for orm in reversed(list(orms))]
+        return [
+            GameMessageMapper.to_entity(orm) for orm in reversed(list(orms))
+        ]

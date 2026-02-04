@@ -1,10 +1,10 @@
 """Infrastructure Persistence - ORM models and mappers."""
 
-from .mappers import (
-    GameSessionMapper,
+from .persistence.mappers import (
     CharacterMapper,
-    ScenarioMapper,
     GameMessageMapper,
+    GameSessionMapper,
+    ScenarioMapper,
 )
 
 __all__ = [

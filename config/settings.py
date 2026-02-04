@@ -1,9 +1,14 @@
 from typing import List
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
     # Environment
     KANG_ENV: str = "local"
 
@@ -87,11 +92,6 @@ class Settings(BaseSettings):
     @property
     def user_postgres_write_url(self) -> str:
         return self.postgres_write_url
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
 
 
 # Global settings instance

@@ -5,10 +5,12 @@ Domain Entity ↔ SQLAlchemy ORM Model 변환을 담당합니다.
 
 from app.auth.domain.entities import SocialAccountEntity, UserEntity
 from app.auth.domain.value_objects import AuthProvider, UserLevel
-from app.auth.infrastructure.persistence.models.postgres_models import (
+from app.auth.infrastructure.persistence.models.user_models import (
     SocialAccount as SocialAccountModel,
 )
-from app.auth.infrastructure.persistence.models.postgres_models import User as UserModel
+from app.auth.infrastructure.persistence.models.user_models import (
+    User as UserModel,
+)
 
 
 class UserMapper:

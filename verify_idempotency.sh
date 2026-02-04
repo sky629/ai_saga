@@ -17,12 +17,19 @@ echo "=================================================="
 # 1. Get Token
 echo ""
 echo "[1] Getting Access Token..."
-TOKEN=$(curl -s -X POST http://localhost:8000/api/dev/token -H "Content-Type: application/json" -d '{}' | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+TOKEN=$(curl -s -X POST "$API_URL/dev/token" -H "Content-Type: application/json" -d '{}' | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 echo "Token: ${TOKEN:0:10}..."
 
 # 2. Setup (Scenario & Character)
 echo ""
 echo "[2] Setting up Game Session..."
+
+# Seed Scenarios (Idempotent)
+echo "Seeding Scenarios..."
+curl -s -X POST "$API_URL/dev/seed-scenarios" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" > /dev/null
+
 # Get Scenario
 SCENARIO_ID=$(curl -s -H "Authorization: Bearer $TOKEN" "$API_URL/game/scenarios" | python3 -c "import sys, json; print(json.load(sys.stdin)[0]['id'])")
 echo "Scenario: $SCENARIO_ID"

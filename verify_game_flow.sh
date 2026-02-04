@@ -7,7 +7,7 @@ echo "=================================================="
 
 # 1. Get Token
 echo "[1] Getting Access Token..."
-TOKEN=$(curl -s -X POST http://localhost:8000/api/dev/token -H "Content-Type: application/json" -d '{}' | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/dev/token -H "Content-Type: application/json" -d '{}' | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 echo "Token: ${TOKEN:0:10}..."
 
 # 2. Get Scenario
@@ -54,6 +54,7 @@ echo "  -> Turn 1: Look around"
 curl -s -X POST "http://localhost:8000/api/v1/game/sessions/$SESSION_ID/actions" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
+  -H "Idempotency-Key: req_$(date +%s)_$RANDOM" \
   -d '{"action": "Look around"}' > /dev/null
 echo "  ...waiting 30s (Rate Limit Prevention)..."
 sleep 30
@@ -62,6 +63,7 @@ echo "  -> Turn 2: Check map"
 curl -s -X POST "http://localhost:8000/api/v1/game/sessions/$SESSION_ID/actions" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
+  -H "Idempotency-Key: req_$(date +%s)_$RANDOM" \
   -d '{"action": "Check map"}' > /dev/null
 echo "  ...waiting 30s (Rate Limit Prevention)..."
 sleep 30
@@ -70,6 +72,7 @@ echo "  -> Turn 3: Wait (Should trigger ending)"
 ENDING_RESP=$(curl -s -X POST "http://localhost:8000/api/v1/game/sessions/$SESSION_ID/actions" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
+  -H "Idempotency-Key: req_$(date +%s)_$RANDOM" \
   -d '{"action": "Wait"}')
 
 echo ""
@@ -80,8 +83,8 @@ echo "$ENDING_RESP" | python3 -m json.tool
 echo ""
 echo "[6] Verifying History (Ended session should be in list)..."
 LIST_RESP=$(curl -s -X GET "http://localhost:8000/api/v1/game/sessions" -H "Authorization: Bearer $TOKEN")
-FOUND=$(echo "$LIST_RESP" | python3 -c "import sys,json; data=json.load(sys.stdin); print('YES' if any(s['id'] == '$SESSION_ID' for s in data) else 'NO')")
-STATUS=$(echo "$LIST_RESP" | python3 -c "import sys,json; data=json.load(sys.stdin); sess=next((s for s in data if s['id'] == '$SESSION_ID'), {}); print(sess.get('status', 'NOT_FOUND'))")
+FOUND=$(echo "$LIST_RESP" | python3 -c "import sys,json; data=json.load(sys.stdin); print('YES' if any(s['id'] == '$SESSION_ID' for s in data.get('items', [])) else 'NO')")
+STATUS=$(echo "$LIST_RESP" | python3 -c "import sys,json; data=json.load(sys.stdin); sess=next((s for s in data.get('items', []) if s['id'] == '$SESSION_ID'), {}); print(sess.get('status', 'NOT_FOUND'))")
 
 echo "Session Found in List? $FOUND"
 echo "Session Status: $STATUS"
@@ -96,7 +99,7 @@ echo "Delete Response Code: $DEL_CODE"
 echo ""
 echo "[8] Verifying Deletion (Session should be gone)..."
 LIST_AFTER=$(curl -s -X GET "http://localhost:8000/api/v1/game/sessions" -H "Authorization: Bearer $TOKEN")
-FOUND_AFTER=$(echo "$LIST_AFTER" | python3 -c "import sys,json; data=json.load(sys.stdin); print('YES' if any(s['id'] == '$SESSION_ID' for s in data) else 'NO')")
+FOUND_AFTER=$(echo "$LIST_AFTER" | python3 -c "import sys,json; data=json.load(sys.stdin); print('YES' if any(s['id'] == '$SESSION_ID' for s in data.get('items', [])) else 'NO')")
 
 echo "Session Found in List? $FOUND_AFTER"
 

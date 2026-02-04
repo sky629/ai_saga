@@ -42,7 +42,9 @@ def aioredis_error_handler(func):
     return wrapper
 
 
-ConnectionInfo = namedtuple("ConnectionInfo", ("hosts", "db", "minsize", "maxsize"))
+ConnectionInfo = namedtuple(
+    "ConnectionInfo", ("hosts", "db", "minsize", "maxsize")
+)
 
 
 _POOLS: Dict[str, redis] = {}

@@ -17,34 +17,40 @@ from app.game.infrastructure.persistence.models.game_models import Scenario
 
 class ScenarioListItem(BaseModel):
     """시나리오 목록 항목 DTO."""
+
     model_config = {"frozen": True}
-    
+
     id: UUID
     name: str
     description: str
     genre: str
     difficulty: str
     max_turns: int
+    world_setting: Optional[str] = None
+    initial_location: Optional[str] = None
+    is_active: bool = True
 
 
 class GetScenariosQuery:
     """시나리오 목록 조회 쿼리.
-    
+
     CQRS Query: 읽기 전용, 상태 변경 없음.
     """
 
     def __init__(self, db: AsyncSession):
         self._db = db
 
-    async def execute(self, active_only: bool = True) -> list[ScenarioListItem]:
+    async def execute(
+        self, active_only: bool = True
+    ) -> list[ScenarioListItem]:
         """활성 시나리오 목록 조회."""
         query = select(Scenario)
-        
+
         if active_only:
             query = query.where(Scenario.is_active.is_(True))
-        
+
         query = query.order_by(Scenario.name)
-        
+
         result = await self._db.execute(query)
         scenarios = result.scalars().all()
 
@@ -56,6 +62,9 @@ class GetScenariosQuery:
                 genre=s.genre,
                 difficulty=s.difficulty,
                 max_turns=s.max_turns,
+                world_setting=s.world_setting,
+                initial_location=s.initial_location,
+                is_active=s.is_active,
             )
             for s in scenarios
         ]
@@ -66,8 +75,8 @@ class GetScenariosQuery:
             select(Scenario).where(Scenario.id == scenario_id)
         )
         orm = result.scalar_one_or_none()
-        
+
         if orm is None:
             return None
-        
+
         return ScenarioMapper.to_entity(orm)

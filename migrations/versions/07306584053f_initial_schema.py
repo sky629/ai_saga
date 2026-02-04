@@ -1,8 +1,8 @@
-"""add game models
+"""initial_schema
 
-Revision ID: 64c17718eabe
-Revises: 3ec070505365
-Create Date: 2026-02-02 09:10:12.023859
+Revision ID: 07306584053f
+Revises:
+Create Date: 2026-02-04 15:30:29.540520
 
 """
 
@@ -13,8 +13,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "64c17718eabe"
-down_revision: Union[str, None] = "3ec070505365"
+revision: str = "07306584053f"
+down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -28,7 +28,10 @@ def upgrade() -> None:
         sa.Column("description", sa.Text(), nullable=False),
         sa.Column("world_setting", sa.Text(), nullable=False),
         sa.Column("initial_location", sa.String(length=200), nullable=False),
+        sa.Column("genre", sa.String(length=50), nullable=False),
+        sa.Column("difficulty", sa.String(length=20), nullable=False),
         sa.Column("system_prompt_override", sa.Text(), nullable=True),
+        sa.Column("max_turns", sa.Integer(), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False),
         sa.Column(
             "created_at",
@@ -45,8 +48,42 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
+        op.f("ix_scenarios_difficulty"),
+        "scenarios",
+        ["difficulty"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_scenarios_genre"), "scenarios", ["genre"], unique=False
+    )
+    op.create_index(
         op.f("ix_scenarios_name"), "scenarios", ["name"], unique=False
     )
+    op.create_table(
+        "users",
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("email", sa.String(length=255), nullable=False),
+        sa.Column("name", sa.String(length=100), nullable=False),
+        sa.Column("user_level", sa.Integer(), nullable=False),
+        sa.Column("profile_image_url", sa.Text(), nullable=True),
+        sa.Column("is_active", sa.Boolean(), nullable=False),
+        sa.Column("email_verified", sa.Boolean(), nullable=False),
+        sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index(op.f("ix_users_email"), "users", ["email"], unique=True)
     op.create_table(
         "characters",
         sa.Column("id", sa.UUID(), nullable=False),
@@ -84,6 +121,42 @@ def upgrade() -> None:
         op.f("ix_characters_user_id"), "characters", ["user_id"], unique=False
     )
     op.create_table(
+        "social_accounts",
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("user_id", sa.UUID(), nullable=False),
+        sa.Column(
+            "provider",
+            postgresql.ENUM("google", "apple", name="oauth_provider"),
+            nullable=False,
+        ),
+        sa.Column("provider_user_id", sa.String(length=255), nullable=False),
+        sa.Column(
+            "provider_data",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+        ),
+        sa.Column("scope_granted", sa.ARRAY(sa.String()), nullable=True),
+        sa.Column("is_primary", sa.Boolean(), nullable=False),
+        sa.Column(
+            "connected_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["user_id"],
+            ["users.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index(
+        op.f("ix_social_accounts_user_id"),
+        "social_accounts",
+        ["user_id"],
+        unique=False,
+    )
+    op.create_table(
         "game_sessions",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("character_id", sa.UUID(), nullable=False),
@@ -95,6 +168,9 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("status", sa.String(length=20), nullable=False),
+        sa.Column("turn_count", sa.Integer(), nullable=False),
+        sa.Column("max_turns", sa.Integer(), nullable=False),
+        sa.Column("ending_type", sa.String(length=50), nullable=True),
         sa.Column(
             "started_at",
             sa.DateTime(timezone=True),
@@ -183,8 +259,16 @@ def downgrade() -> None:
         op.f("ix_game_sessions_character_id"), table_name="game_sessions"
     )
     op.drop_table("game_sessions")
+    op.drop_index(
+        op.f("ix_social_accounts_user_id"), table_name="social_accounts"
+    )
+    op.drop_table("social_accounts")
     op.drop_index(op.f("ix_characters_user_id"), table_name="characters")
     op.drop_table("characters")
+    op.drop_index(op.f("ix_users_email"), table_name="users")
+    op.drop_table("users")
     op.drop_index(op.f("ix_scenarios_name"), table_name="scenarios")
+    op.drop_index(op.f("ix_scenarios_genre"), table_name="scenarios")
+    op.drop_index(op.f("ix_scenarios_difficulty"), table_name="scenarios")
     op.drop_table("scenarios")
     # ### end Alembic commands ###

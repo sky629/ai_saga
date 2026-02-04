@@ -4,7 +4,7 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import AsyncContextManager, Optional
 from uuid import UUID
 
 from app.game.domain.entities import (
@@ -13,6 +13,7 @@ from app.game.domain.entities import (
     GameSessionEntity,
     ScenarioEntity,
 )
+from app.llm.dto.llm_response import LLMResponse
 
 
 class GameSessionRepositoryInterface(ABC):
@@ -24,7 +25,9 @@ class GameSessionRepositoryInterface(ABC):
         pass
 
     @abstractmethod
-    async def get_active_by_character(self, character_id: UUID) -> Optional[GameSessionEntity]:
+    async def get_active_by_character(
+        self, character_id: UUID
+    ) -> Optional[GameSessionEntity]:
         """캐릭터의 활성 세션 조회."""
         pass
 
@@ -97,7 +100,7 @@ class LLMServiceInterface(ABC):
         system_prompt: str,
         messages: list[dict],
         temperature: float = 0.8,
-    ) -> "LLMResponse":
+    ) -> LLMResponse:
         """LLM 응답 생성."""
         pass
 
@@ -113,4 +116,9 @@ class CacheServiceInterface(ABC):
     @abstractmethod
     async def set(self, key: str, value: str, ttl_seconds: int = 600) -> None:
         """캐시 저장."""
+        pass
+
+    @abstractmethod
+    def lock(self, key: str, ttl_ms: int = 1000) -> AsyncContextManager:
+        """분산 락 (Redis Lock) 컨텍스트 매니저 반환."""
         pass

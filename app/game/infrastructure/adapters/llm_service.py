@@ -11,7 +11,7 @@ from config.settings import settings
 
 class LLMServiceAdapter(LLMServiceInterface):
     """LLM 서비스 어댑터.
-    
+
     GeminiProvider를 Port 인터페이스에 맞춰 래핑합니다.
     향후 다른 LLM 제공자로 교체 가능합니다.
     """
