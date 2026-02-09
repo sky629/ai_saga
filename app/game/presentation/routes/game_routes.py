@@ -181,25 +181,6 @@ async def delete_session(
         )
 
 
-@game_router_v1.delete(
-    "/sessions/{session_id}/",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-async def delete_session(
-    session_id: UUID,
-    use_case: DeleteSessionDep,
-    current_user: User = Depends(get_current_user),
-):
-    """Delete a game session."""
-    try:
-        await use_case.execute(current_user.id, session_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Session not found",
-        )
-
-
 @game_router_v1.post(
     "/sessions/{session_id}/actions/",
     response_model=Union[GameActionResponse, GameEndingResponse],
@@ -224,7 +205,7 @@ async def submit_action(
     lock_key = f"game:{session_id}:{idempotency_key}"
     async with cache_service.lock(lock_key, ttl_ms=20000):  # 20s lock
         # TODO: llm 응답을 입력으로 이미지를 생성해서 같이 반환
-        
+
         result = await use_case.execute(current_user.id, input_data)
 
     if result.is_cached:

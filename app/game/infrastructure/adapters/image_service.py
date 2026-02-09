@@ -84,7 +84,9 @@ class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
             if self._public_url:
                 return f"{self._public_url}/{object_key}"
             else:
-                return f"{settings.r2_endpoint_url}/{self._bucket}/{object_key}"
+                return (
+                    f"{settings.r2_endpoint_url}/{self._bucket}/{object_key}"
+                )
 
         except Exception as e:
             logger.error(f"Image generation failed: {e}", exc_info=True)

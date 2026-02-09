@@ -5,7 +5,6 @@ variables to be set. Unit tests for isolated modules like LLM can run without th
 """
 
 import asyncio
-import os
 
 import pytest
 
@@ -43,7 +42,7 @@ def client(app):
 @pytest.fixture
 async def async_client(app):
     """Create async test client."""
-    from httpx import AsyncClient, ASGITransport
+    from httpx import ASGITransport, AsyncClient
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"

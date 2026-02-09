@@ -1,11 +1,11 @@
 """Unit tests for GetSessionHistoryQuery with cursor-based pagination."""
 
-from app.common.utils.datetime import get_utc_datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
 import pytest
 
+from app.common.utils.datetime import get_utc_datetime
 from app.game.application.queries.get_session_history import (
     GetSessionHistoryQuery,
 )

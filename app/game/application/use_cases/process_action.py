@@ -200,7 +200,9 @@ class ProcessActionUseCase:
             turn_count=session.turn_count,
             max_turns=session.max_turns,
             is_ending=False,
-            image_url=await self._generate_illustration(llm_response.content, session),
+            image_url=await self._generate_illustration(
+                llm_response.content, session
+            ),
         )
 
     async def _handle_ending(
@@ -322,5 +324,7 @@ class ProcessActionUseCase:
         return await self._image_service.generate_image(
             prompt=illustration_prompt,
             session_id=str(session.id),
-            user_id=str(session.character_id),  # character_id를 user_id 대신 사용
+            user_id=str(
+                session.character_id
+            ),  # character_id를 user_id 대신 사용
         )

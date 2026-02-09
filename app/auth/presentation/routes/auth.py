@@ -1,7 +1,16 @@
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Cookie,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import RedirectResponse
 from fastapi.routing import APIRoute
 
@@ -30,12 +39,9 @@ from app.auth.infrastructure.persistence.models.user_models import User
 from app.auth.presentation.routes.schemas.request import (
     GoogleCallbackRequest,
     GoogleTokenRefreshRequest,
-    RefreshTokenRequest,
     UserUpdateRequest,
 )
 from app.auth.presentation.routes.schemas.response import (
-    GoogleLoginResponse,
-    LoginResponse,
     MessageResponse,
     SocialAccountResponse,
     TokenResponse,
@@ -100,7 +106,7 @@ async def google_callback(
             value=result.refresh_token,
             httponly=True,
             secure=False,  # Set to True in production (HTTPS)
-            samesite="lax", # Needed for redirect flow to work
+            samesite="lax",  # Needed for redirect flow to work
             max_age=7 * 24 * 60 * 60,  # 7 days
         )
 
@@ -131,14 +137,12 @@ async def refresh_token(
                 detail="Refresh token missing",
             )
 
-        input_data = RefreshTokenInput(
-            refresh_token=refresh_token
-        )
+        input_data = RefreshTokenInput(refresh_token=refresh_token)
         result = await use_case.execute(input_data)
-        
+
         # Optionally rotate refresh token here if use case returns a new one
         # For now, just return access token
-        
+
         return TokenResponse(
             access_token=result.access_token,
             token_type=result.token_type,
