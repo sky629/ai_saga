@@ -56,11 +56,12 @@ class SocialAccountMapper:
             provider=AuthProvider(orm.provider),
             provider_user_id=orm.provider_user_id,
             provider_data=orm.provider_data,
-            access_token=orm.access_token,
-            refresh_token=orm.refresh_token,
-            token_expires_at=orm.token_expires_at,
-            created_at=orm.created_at,
-            updated_at=orm.updated_at,
+            # Tokens are not stored in DB, so they are None when retrieving from DB
+            access_token=None,
+            refresh_token=None,
+            token_expires_at=None,
+            created_at=orm.connected_at,
+            updated_at=orm.connected_at,
             last_used_at=orm.last_used_at,
         )
 

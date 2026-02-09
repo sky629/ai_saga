@@ -77,6 +77,12 @@ class Character(Base):
     user_id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
     )
+    scenario_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scenarios.id"),
+        nullable=False,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -107,6 +113,7 @@ class Character(Base):
     game_sessions: Mapped[list["GameSession"]] = relationship(
         "GameSession", back_populates="character"
     )
+    scenario: Mapped["Scenario"] = relationship("Scenario")
 
     def __repr__(self):
         return f"<Character(id={self.id}, name={self.name})>"

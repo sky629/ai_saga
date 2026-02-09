@@ -46,6 +46,16 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
 
+    # Imagen (Image Generation)
+    imagen_model: str = "imagen-3.0-generate-002"
+
+    # Cloudflare R2
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_endpoint_url: str = ""
+    r2_bucket_name: str = "ai-saga"
+    r2_public_url: str = ""  # 공개 URL (CDN 등)
+
     # Game Settings
     game_min_turns: int = 1
     game_max_turns: int = 30

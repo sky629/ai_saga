@@ -16,6 +16,7 @@ from app.game.application.ports import (
     CacheServiceInterface,
     GameMessageRepositoryInterface,
     GameSessionRepositoryInterface,
+    ImageGenerationServiceInterface,
     LLMServiceInterface,
 )
 from app.game.domain.entities import GameMessageEntity, GameSessionEntity
@@ -59,11 +60,13 @@ class ProcessActionUseCase:
         message_repository: GameMessageRepositoryInterface,
         llm_service: LLMServiceInterface,
         cache_service: CacheServiceInterface,
+        image_service: Optional[ImageGenerationServiceInterface] = None,
     ):
         self._session_repo = session_repository
         self._message_repo = message_repository
         self._llm = llm_service
         self._cache = cache_service
+        self._image_service = image_service
 
     async def execute(
         self, user_id: UUID, input_data: ProcessActionInput
@@ -197,6 +200,7 @@ class ProcessActionUseCase:
             turn_count=session.turn_count,
             max_turns=session.max_turns,
             is_ending=False,
+            image_url=await self._generate_illustration(llm_response.content, session),
         )
 
     async def _handle_ending(
@@ -290,4 +294,33 @@ class ProcessActionUseCase:
         }
         await self._cache.set(
             cache_key, json.dumps(cache_data), ttl_seconds=600
+        )
+
+    async def _generate_illustration(
+        self,
+        narrative: str,
+        session: GameSessionEntity,
+    ) -> Optional[str]:
+        """LLM 응답 기반 삽화 생성.
+
+        Args:
+            narrative: LLM 응답 내용
+            session: 게임 세션 (session_id, character_id 사용)
+
+        Returns:
+            생성된 이미지 URL, 실패 시 None
+        """
+        if not self._image_service:
+            return None
+
+        # 간단한 프롬프트 생성 (향후 개선 가능)
+        illustration_prompt = (
+            f"Fantasy game illustration: {narrative[:300]}. "
+            "Digital art style, vibrant colors, detailed scene."
+        )
+
+        return await self._image_service.generate_image(
+            prompt=illustration_prompt,
+            session_id=str(session.id),
+            user_id=str(session.character_id),  # character_id를 user_id 대신 사용
         )

@@ -29,6 +29,7 @@ from app.game.dependencies import (
     GetUserSessionsDep,
     ProcessActionDep,
     StartGameDep,
+    DeleteSessionDep,
 )
 from app.game.presentation.routes.schemas.request import (
     CreateCharacterRequest,
@@ -52,7 +53,7 @@ game_router_v1 = APIRouter(
 )
 
 
-@game_router_v1.get("/scenarios", response_model=List[ScenarioResponse])
+@game_router_v1.get("/scenarios/", response_model=List[ScenarioResponse])
 async def list_scenarios(
     query: GetScenariosDep,
     current_user: User = Depends(get_current_user),
@@ -62,7 +63,7 @@ async def list_scenarios(
     return results
 
 
-@game_router_v1.get("/characters", response_model=List[CharacterResponse])
+@game_router_v1.get("/characters/", response_model=List[CharacterResponse])
 async def list_characters(
     query: GetCharactersDep,
     current_user: User = Depends(get_current_user),
@@ -73,7 +74,7 @@ async def list_characters(
 
 
 @game_router_v1.post(
-    "/characters",
+    "/characters/",
     response_model=CharacterResponse,
     status_code=status.HTTP_201_CREATED,
 )
@@ -84,14 +85,16 @@ async def create_character(
 ):
     """Create a new character."""
     input_data = CreateCharacterInput(
-        name=request.name, description=request.description
+        name=request.name,
+        description=request.description,
+        scenario_id=request.scenario_id,
     )
     character = await use_case.execute(current_user.id, input_data)
     return character
 
 
 @game_router_v1.get(
-    "/sessions", response_model=CursorPaginatedResponse[SessionListResponse]
+    "/sessions/", response_model=CursorPaginatedResponse[SessionListResponse]
 )
 async def list_sessions(
     query: GetUserSessionsDep,
@@ -126,27 +129,79 @@ async def list_sessions(
 
 
 @game_router_v1.post(
-    "/sessions",
+    "/sessions/",
     response_model=GameSessionResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def start_game(
     request: StartGameRequest,
     use_case: StartGameDep,
+    cache_service: CacheServiceDep,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     current_user: User = Depends(get_current_user),
 ):
-    """Start a new game session."""
+    """Start a new game session.
+
+    Supports idempotency via `Idempotency-Key` header.
+    Prevents concurrent session creation for the same user/key.
+    """
     input_data = StartGameInput(
         character_id=request.character_id,
         scenario_id=request.scenario_id,
         max_turns=request.max_turns,
     )
-    result = await use_case.execute(current_user.id, input_data)
+
+    if idempotency_key:
+        lock_key = f"game:start:{current_user.id}:{idempotency_key}"
+        async with cache_service.lock(lock_key, ttl_ms=20000):
+            result = await use_case.execute(current_user.id, input_data)
+    else:
+        # No idempotency key, just execute
+        result = await use_case.execute(current_user.id, input_data)
+
     return result
 
 
+@game_router_v1.delete(
+    "/sessions/{session_id}/",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_session(
+    session_id: UUID,
+    use_case: DeleteSessionDep,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a game session."""
+    try:
+        await use_case.execute(current_user.id, session_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found",
+        )
+
+
+@game_router_v1.delete(
+    "/sessions/{session_id}/",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_session(
+    session_id: UUID,
+    use_case: DeleteSessionDep,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a game session."""
+    try:
+        await use_case.execute(current_user.id, session_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found",
+        )
+
+
 @game_router_v1.post(
-    "/sessions/{session_id}/actions",
+    "/sessions/{session_id}/actions/",
     response_model=Union[GameActionResponse, GameEndingResponse],
 )
 async def submit_action(
@@ -168,6 +223,8 @@ async def submit_action(
     # Endpoint-level Distributed Lock
     lock_key = f"game:{session_id}:{idempotency_key}"
     async with cache_service.lock(lock_key, ttl_ms=20000):  # 20s lock
+        # TODO: llm 응답을 입력으로 이미지를 생성해서 같이 반환
+        
         result = await use_case.execute(current_user.id, input_data)
 
     if result.is_cached:
@@ -177,7 +234,7 @@ async def submit_action(
 
 
 @game_router_v1.get(
-    "/sessions/{session_id}/messages",
+    "/sessions/{session_id}/messages/",
     response_model=CursorPaginatedResponse[MessageHistoryResponse],
 )
 async def get_session_messages(

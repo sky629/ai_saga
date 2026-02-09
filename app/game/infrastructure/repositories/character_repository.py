@@ -55,6 +55,7 @@ class CharacterRepositoryImpl(CharacterRepositoryInterface):
                 user_id=character.user_id,
                 name=character.name,
                 description=character.description,
+                scenario_id=character.scenario_id,
                 stats=character.stats.model_dump(),
                 inventory=character.inventory,
                 is_active=character.is_active,
@@ -66,7 +67,18 @@ class CharacterRepositoryImpl(CharacterRepositoryInterface):
             for key, value in updates.items():
                 setattr(orm, key, value)
 
-        await self._db.commit()
+        await self._db.flush()
+        await self._db.refresh(orm)
+
         await self._db.refresh(orm)
 
         return CharacterMapper.to_entity(orm)
+
+    async def delete(self, character_id: UUID) -> None:
+        """캐릭터 삭제."""
+        from sqlalchemy import delete as sql_delete
+
+        await self._db.execute(
+            sql_delete(Character).where(Character.id == character_id)
+        )
+        await self._db.flush()

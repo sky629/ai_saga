@@ -1,6 +1,6 @@
 """Unit tests for GetSessionHistoryQuery with cursor-based pagination."""
 
-from datetime import datetime, timezone
+from app.common.utils.datetime import get_utc_datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
@@ -107,7 +107,7 @@ class TestGetSessionHistoryQuery:
                     ),
                     "role": "user" if i % 2 == 0 else "assistant",
                     "content": f"Message {i}",
-                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": get_utc_datetime().isoformat(),
                     "parsed_response": None,
                 }
                 for i in range(10)
@@ -160,7 +160,7 @@ class TestGetSessionHistoryQuery:
         mock_msg.id = get_uuid7()
         mock_msg.role = "user" if index % 2 == 0 else "assistant"
         mock_msg.content = f"Message {index}"
-        mock_msg.created_at = datetime.now(timezone.utc)
+        mock_msg.created_at = get_utc_datetime()
         mock_msg.parsed_response = None
 
         return mock_msg

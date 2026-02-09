@@ -36,7 +36,7 @@ class DevTokenResponse(BaseModel):
     message: str = "DEV ONLY - Do not use in production"
 
 
-@dev_router.post("/token", response_model=DevTokenResponse)
+@dev_router.post("/token/", response_model=DevTokenResponse)
 async def get_dev_token(
     request: DevTokenRequest = DevTokenRequest(),
     db: AsyncSession = Depends(postgres_storage.write_db),
@@ -93,7 +93,7 @@ async def get_dev_token(
     )
 
 
-@dev_router.get("/health")
+@dev_router.get("/health/")
 async def dev_health():
     """Development health check with extra info."""
     if settings.is_prod():
@@ -104,7 +104,7 @@ async def dev_health():
 
     return {
         "status": "healthy",
-        "environment": settings.environment,
+        "environment": settings.KANG_ENV,
         "debug": settings.debug,
     }
 
@@ -116,7 +116,7 @@ class SeedScenariosResponse(BaseModel):
     scenarios_created: int
 
 
-@dev_router.post("/seed-scenarios", response_model=SeedScenariosResponse)
+@dev_router.post("/seed-scenarios/", response_model=SeedScenariosResponse)
 async def seed_scenarios(
     db: AsyncSession = Depends(postgres_storage.write_db),
 ):

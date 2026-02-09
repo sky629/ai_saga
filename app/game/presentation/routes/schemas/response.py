@@ -86,6 +86,7 @@ class CharacterResponse(BaseModel):
 
     id: UUID
     user_id: UUID
+    scenario_id: UUID
     name: str
     description: Optional[str]
     stats: CharacterStatsResponse
@@ -133,6 +134,7 @@ class GameActionResponse(BaseModel):
     max_turns: int
     is_ending: bool = False
     state_changes: Optional[dict] = None
+    image_url: Optional[str] = None  # 삽화 이미지 URL
 
 
 class GameEndingResponse(BaseModel):

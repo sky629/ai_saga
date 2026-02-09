@@ -78,6 +78,7 @@ class CharacterMapper:
         return CharacterEntity(
             id=orm.id,
             user_id=orm.user_id,
+            scenario_id=orm.scenario_id,
             name=orm.name,
             description=orm.description,
             stats=stats,

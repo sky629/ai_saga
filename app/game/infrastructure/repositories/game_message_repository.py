@@ -28,7 +28,7 @@ class GameMessageRepositoryImpl(GameMessageRepositoryInterface):
             token_count=message.token_count,
         )
         self._db.add(orm)
-        await self._db.commit()
+        await self._db.flush()
         await self._db.refresh(orm)
 
         return GameMessageMapper.to_entity(orm)

@@ -90,7 +90,7 @@ class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
             for key, value in updates.items():
                 setattr(orm, key, value)
 
-        await self._db.commit()
+        await self._db.flush()
         await self._db.refresh(orm)
 
         return GameSessionMapper.to_entity(orm)
@@ -112,4 +112,4 @@ class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
         await self._db.execute(
             sql_delete(GameSession).where(GameSession.id == session_id)
         )
-        await self._db.commit()
+        await self._db.flush()

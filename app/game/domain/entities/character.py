@@ -52,6 +52,7 @@ class CharacterEntity(BaseModel):
 
     id: UUID
     user_id: UUID
+    scenario_id: UUID
     name: str = Field(min_length=1, max_length=100)
     description: Optional[str] = None
     stats: CharacterStats = Field(default_factory=CharacterStats)

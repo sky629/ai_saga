@@ -21,6 +21,7 @@ from app.game.application.use_cases import (
     GenerateEndingUseCase,
     ProcessActionUseCase,
     StartGameUseCase,
+    DeleteSessionUseCase,
 )
 from app.game.container import GameContainer
 
@@ -76,6 +77,13 @@ def get_create_character_use_case(
     return container.create_character_use_case()
 
 
+def get_delete_session_use_case(
+    container: Annotated[GameContainer, Depends(get_container)],
+):
+    """DeleteSessionUseCase 의존성."""
+    return container.delete_session_use_case()
+
+
 def get_cache_service(
     container: Annotated[GameContainer, Depends(get_container)],
 ) -> CacheServiceInterface:
@@ -94,6 +102,9 @@ GenerateEndingDep = Annotated[
 ]
 CreateCharacterDep = Annotated[
     CreateCharacterUseCase, Depends(get_create_character_use_case)
+]
+DeleteSessionDep = Annotated[
+    DeleteSessionUseCase, Depends(get_delete_session_use_case)
 ]
 CacheServiceDep = Annotated[CacheServiceInterface, Depends(get_cache_service)]
 

@@ -11,6 +11,7 @@ from app.game.application.ports import (
     CharacterRepositoryInterface,
     GameMessageRepositoryInterface,
     GameSessionRepositoryInterface,
+    ImageGenerationServiceInterface,
     LLMServiceInterface,
     ScenarioRepositoryInterface,
 )
@@ -19,10 +20,14 @@ from app.game.application.use_cases import (
     GenerateEndingUseCase,
     ProcessActionUseCase,
     StartGameUseCase,
+    DeleteSessionUseCase,
 )
 from app.game.infrastructure.adapters import (
     CacheServiceAdapter,
     LLMServiceAdapter,
+)
+from app.game.infrastructure.adapters.image_service import (
+    ImageGenerationServiceAdapter,
 )
 from app.game.infrastructure.repositories import (
     CharacterRepositoryImpl,
@@ -43,6 +48,7 @@ class GameContainer:
         self._db = db
         self._cache: CacheServiceInterface | None = None
         self._llm: LLMServiceInterface | None = None
+        self._image: ImageGenerationServiceInterface | None = None
 
     # === Service Singletons (per request) ===
 
@@ -55,10 +61,17 @@ class GameContainer:
 
     @property
     def llm_service(self) -> LLMServiceInterface:
-        """LLM 서비스 (싱글톤)."""
+        """등록LLM 서비스 (싱글톤)."""
         if self._llm is None:
             self._llm = LLMServiceAdapter()
         return self._llm
+
+    @property
+    def image_service(self) -> ImageGenerationServiceInterface:
+        """이미지 생성 서비스 (싱글톤)."""
+        if self._image is None:
+            self._image = ImageGenerationServiceAdapter()
+        return self._image
 
     # === Repository Factories ===
 
@@ -87,6 +100,7 @@ class GameContainer:
             message_repository=self.message_repository(),
             llm_service=self.llm_service,
             cache_service=self.cache_service,
+            image_service=self.image_service,
         )
 
     def start_game_use_case(self) -> StartGameUseCase:
@@ -113,6 +127,14 @@ class GameContainer:
         return CreateCharacterUseCase(
             character_repository=self.character_repository(),
             session_repository=self.session_repository(),
+            scenario_repository=self.scenario_repository(),
+        )
+
+    def delete_session_use_case(self) -> DeleteSessionUseCase:
+        """세션 삭제 유스케이스."""
+        return DeleteSessionUseCase(
+            session_repository=self.session_repository(),
+            character_repository=self.character_repository(),
         )
 
     # === Query Factories (CQRS Read Side) ===

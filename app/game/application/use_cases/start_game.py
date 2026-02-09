@@ -72,6 +72,9 @@ class StartGameUseCase:
         if not scenario or not scenario.is_playable:
             raise ValueError("Scenario not found or inactive")
 
+        if character.scenario_id != scenario.id:
+            raise ValueError("Character does not belong to this scenario")
+
         # 3. Check for existing active session
         existing = await self._session_repo.get_active_by_character(
             character.id

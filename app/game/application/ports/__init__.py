@@ -60,6 +60,11 @@ class CharacterRepositoryInterface(ABC):
         """캐릭터 저장."""
         pass
 
+    @abstractmethod
+    async def delete(self, character_id: UUID) -> None:
+        """캐릭터 삭제."""
+        pass
+
 
 class ScenarioRepositoryInterface(ABC):
     """시나리오 저장소 인터페이스."""
@@ -121,4 +126,27 @@ class CacheServiceInterface(ABC):
     @abstractmethod
     def lock(self, key: str, ttl_ms: int = 1000) -> AsyncContextManager:
         """분산 락 (Redis Lock) 컨텍스트 매니저 반환."""
+        pass
+
+
+class ImageGenerationServiceInterface(ABC):
+    """이미지 생성 서비스 인터페이스."""
+
+    @abstractmethod
+    async def generate_image(
+        self,
+        prompt: str,
+        session_id: str,
+        user_id: str,
+    ) -> Optional[str]:
+        """이미지 생성 후 URL 반환.
+
+        Args:
+            prompt: 이미지 생성 프롬프트
+            session_id: 세션 ID (저장 경로용)
+            user_id: 사용자 ID (저장 경로용)
+
+        Returns:
+            생성된 이미지의 공개 URL, 실패 시 None
+        """
         pass

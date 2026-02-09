@@ -1,5 +1,6 @@
 """Unit tests for GetUserSessionsQuery with cursor-based pagination."""
 
+from app.common.utils.datetime import get_utc_datetime
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
@@ -134,8 +135,8 @@ class TestGetUserSessionsQuery:
         mock_session.status = status
         mock_session.turn_count = index
         mock_session.max_turns = 10
-        mock_session.started_at = datetime.now(timezone.utc)
-        mock_session.last_activity_at = datetime.now(timezone.utc)
+        mock_session.started_at = get_utc_datetime()
+        mock_session.last_activity_at = get_utc_datetime()
         mock_session.ending_type = None
 
         # Mock relationships

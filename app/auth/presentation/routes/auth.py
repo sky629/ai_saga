@@ -1,7 +1,8 @@
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
 from fastapi.routing import APIRoute
 
 from app.auth import logger
@@ -50,18 +51,17 @@ auth_public_router_v1 = APIRouter(
 )
 
 
-@auth_public_router_v1.get(
-    "/google/login/", response_model=GoogleLoginResponse
-)
+@auth_public_router_v1.get("/google/login/")
 @limiter.limit(RATE_LIMITS["oauth"])
 async def google_login(
     request: Request, container=Depends(get_auth_container)
 ):
-    """Initialize Google OAuth login flow."""
+    """Initialize Google OAuth login flow (Redirects to Google)."""
     try:
         oauth_provider = container.google_auth_adapter()
         auth_url, state = await oauth_provider.generate_auth_url()
-        return GoogleLoginResponse(auth_url=auth_url, state=state)
+        # Redirect directly to Google Auth URL
+        return RedirectResponse(auth_url)
     except APIException:
         raise
     except Exception as e:
@@ -72,14 +72,14 @@ async def google_login(
         )
 
 
-@auth_public_router_v1.get("/google/callback/", response_model=LoginResponse)
+@auth_public_router_v1.get("/google/callback/")
 @limiter.limit(RATE_LIMITS["oauth"])
 async def google_callback(
     request: Request,
     use_case: HandleOAuthCallbackDep,
     callback_request: GoogleCallbackRequest = Depends(GoogleCallbackRequest),
 ):
-    """Handle Google OAuth callback and authenticate user."""
+    """Handle Google OAuth callback, set cookie, and redirect to frontend."""
     try:
         input_data = OAuthCallbackInput(
             code=callback_request.code,
@@ -88,15 +88,23 @@ async def google_callback(
         )
         result = await use_case.execute(input_data)
 
-        return LoginResponse(
-            user=UserResponse.model_validate(result.user),
-            tokens=TokenResponse(
-                access_token=result.access_token,
-                refresh_token=result.refresh_token,
-                expires_in=result.expires_in,
-            ),
-            is_new_user=result.is_new_user,
+        # Frontend success URL (should be configurable via settings)
+        # Assuming Vite default port 5173 for now
+        frontend_url = f"http://localhost:5173/auth/login/success?access_token={result.access_token}&new_user={str(result.is_new_user).lower()}"
+
+        response = RedirectResponse(url=frontend_url)
+
+        # Set Refresh Token as HttpOnly Cookie
+        response.set_cookie(
+            key="refresh_token",
+            value=result.refresh_token,
+            httponly=True,
+            secure=False,  # Set to True in production (HTTPS)
+            samesite="lax", # Needed for redirect flow to work
+            max_age=7 * 24 * 60 * 60,  # 7 days
         )
+
+        return response
     except APIException:
         raise
     except Exception as e:
@@ -110,16 +118,27 @@ async def google_callback(
 @auth_public_router_v1.post("/refresh/", response_model=TokenResponse)
 @limiter.limit(RATE_LIMITS["auth"])
 async def refresh_token(
-    token_request: RefreshTokenRequest,
-    use_case: RefreshTokenDep,
     request: Request,
+    use_case: RefreshTokenDep,
+    response: Response,
+    refresh_token: Optional[str] = Cookie(None),
 ):
-    """Refresh JWT access token using refresh token."""
+    """Refresh JWT access token using refresh token from Cookie."""
     try:
+        if not refresh_token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token missing",
+            )
+
         input_data = RefreshTokenInput(
-            refresh_token=token_request.refresh_token
+            refresh_token=refresh_token
         )
         result = await use_case.execute(input_data)
+        
+        # Optionally rotate refresh token here if use case returns a new one
+        # For now, just return access token
+        
         return TokenResponse(
             access_token=result.access_token,
             token_type=result.token_type,
@@ -161,6 +180,7 @@ async def refresh_google_token(
 @auth_public_router_v1.post("/logout/", response_model=MessageResponse)
 async def logout(
     use_case: LogoutDep,
+    response: Response,
     current_user: User = Depends(get_current_user),
     authorization: Optional[str] = Header(None),
 ):
@@ -175,6 +195,14 @@ async def logout(
                 user_id=current_user.id, access_token=token
             )
             await use_case.execute(input_data)
+
+        # Clear Refresh Token Cookie
+        response.delete_cookie(
+            key="refresh_token",
+            httponly=True,
+            secure=False,
+            samesite="lax",
+        )
 
         return MessageResponse(message="Successfully logged out")
     except APIException:
