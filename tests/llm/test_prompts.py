@@ -1,5 +1,6 @@
 """Tests for Game Master Prompt Templates - TDD RED Phase."""
 
+from app.game.domain.value_objects import GameState
 from app.llm.prompts.game_master import (
     GameMasterPrompt,
     build_action_prompt,
@@ -83,3 +84,41 @@ class TestGameMasterPrompt:
         # Should not have encoding issues
         assert "한글" in prompt
         assert len(prompt) > 0
+
+    def test_game_master_prompt_with_game_state(self):
+        """GameMasterPrompt should include game state in system prompt."""
+        game_state = GameState(
+            items=["sword", "torch"],
+            visited_locations=["start", "forest"],
+            met_npcs=["wizard"],
+            discoveries=["secret_door"],
+        )
+
+        prompt_data = GameMasterPrompt(
+            scenario_name="던전 탐험",
+            world_setting="중세 판타지",
+            character_name="영웅",
+            current_location="forest",
+            game_state=game_state,
+        )
+
+        system_prompt = prompt_data.system_prompt
+
+        assert "sword" in system_prompt
+        assert "torch" in system_prompt
+        assert "wizard" in system_prompt
+        assert "secret_door" in system_prompt
+
+    def test_game_master_prompt_without_game_state(self):
+        """GameMasterPrompt should work without game state."""
+        prompt_data = GameMasterPrompt(
+            scenario_name="던전 탐험",
+            world_setting="중세 판타지",
+            character_name="영웅",
+            current_location="start",
+        )
+
+        system_prompt = prompt_data.system_prompt
+
+        assert "던전 탐험" in system_prompt
+        assert len(system_prompt) > 100

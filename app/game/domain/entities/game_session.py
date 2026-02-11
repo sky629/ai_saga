@@ -7,7 +7,11 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.common.utils.datetime import get_utc_datetime
-from app.game.domain.value_objects import EndingType, SessionStatus
+from app.game.domain.value_objects import (
+    EndingType,
+    SessionStatus,
+    StateChanges,
+)
 
 
 class GameSessionEntity(BaseModel):
@@ -75,6 +79,30 @@ class GameSessionEntity(BaseModel):
     def update_location(self, new_location: str) -> "GameSessionEntity":
         """현재 위치 업데이트."""
         return self.model_copy(update={"current_location": new_location})
+
+    def update_game_state(
+        self, changes: "StateChanges"
+    ) -> "GameSessionEntity":
+        """게임 상태 업데이트 (불변 패턴).
+
+        Args:
+            changes: 적용할 상태 변경사항
+
+        Returns:
+            업데이트된 새로운 GameSession 인스턴스
+        """
+        from app.game.domain.services import GameStateService
+
+        new_state_dict = GameStateService.apply_state_changes(
+            current_state_dict=self.game_state, changes=changes
+        )
+
+        return self.model_copy(
+            update={
+                "game_state": new_state_dict,
+                "last_activity_at": get_utc_datetime(),
+            }
+        )
 
     # === Domain Properties ===
 

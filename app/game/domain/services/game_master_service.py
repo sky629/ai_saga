@@ -3,8 +3,12 @@
 순수 도메인 로직으로, 외부 의존성(LLM, DB) 없이 게임 규칙을 처리합니다.
 """
 
+import json
+import re
+from typing import Optional
+
 from app.game.domain.entities import GameSessionEntity
-from app.game.domain.value_objects import EndingType
+from app.game.domain.value_objects import EndingType, StateChanges
 
 
 class GameMasterService:
@@ -88,3 +92,76 @@ class GameMasterService:
             if stripped.startswith(("1.", "2.", "3.", "4.", "5.", "-", "•")):
                 options.append(stripped)
         return options[:max_options]
+
+    @staticmethod
+    def parse_llm_response(content: str) -> Optional[dict]:
+        """LLM 응답을 JSON으로 파싱.
+
+        Args:
+            content: LLM 응답 텍스트 (마크다운 코드 블록 포함 가능)
+
+        Returns:
+            파싱된 JSON 딕셔너리, 파싱 실패 시 None
+        """
+        if not content or not content.strip():
+            return None
+
+        # Try markdown code block first
+        json_match = re.search(
+            r"```json\s*(\{.*?\})\s*```", content, re.DOTALL
+        )
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            json_str = content.strip()
+
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            return None
+
+    @staticmethod
+    def extract_state_changes(parsed: dict) -> StateChanges:
+        """파싱된 JSON에서 StateChanges 추출.
+
+        Args:
+            parsed: 파싱된 JSON 딕셔너리
+
+        Returns:
+            StateChanges 객체
+        """
+        changes_dict = parsed.get("state_changes", {})
+
+        return StateChanges(
+            hp_change=changes_dict.get("hp_change", 0),
+            items_gained=changes_dict.get("items_gained", []),
+            items_lost=changes_dict.get("items_lost", []),
+            location=changes_dict.get("location"),
+            npcs_met=changes_dict.get("npcs_met", []),
+            discoveries=changes_dict.get("discoveries", []),
+        )
+
+    @staticmethod
+    def extract_narrative_from_parsed(parsed: dict, fallback: str) -> str:
+        """파싱된 JSON에서 내러티브 추출.
+
+        Args:
+            parsed: 파싱된 JSON 딕셔너리
+            fallback: narrative 필드가 없을 때 사용할 기본값
+
+        Returns:
+            내러티브 텍스트
+        """
+        return parsed.get("narrative", fallback)
+
+    @staticmethod
+    def extract_options_from_parsed(parsed: dict) -> list[str]:
+        """파싱된 JSON에서 옵션 추출.
+
+        Args:
+            parsed: 파싱된 JSON 딕셔너리
+
+        Returns:
+            옵션 목록
+        """
+        return parsed.get("options", [])

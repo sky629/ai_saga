@@ -1,6 +1,7 @@
 """Game Domain Value Objects - Enums for type safety."""
 
 from .ending_type import EndingType
+from .game_state import GameState, StateChanges
 from .message_role import MessageRole
 from .scenario_difficulty import ScenarioDifficulty
 from .scenario_genre import ScenarioGenre
@@ -12,4 +13,6 @@ __all__ = [
     "MessageRole",
     "ScenarioDifficulty",
     "ScenarioGenre",
+    "GameState",
+    "StateChanges",
 ]

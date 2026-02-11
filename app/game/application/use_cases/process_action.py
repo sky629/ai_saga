@@ -21,7 +21,7 @@ from app.game.application.ports import (
 )
 from app.game.domain.entities import GameMessageEntity, GameSessionEntity
 from app.game.domain.services import GameMasterService
-from app.game.domain.value_objects import MessageRole
+from app.game.domain.value_objects import GameState, MessageRole
 from app.game.presentation.routes.schemas.response import (
     GameActionResponse,
     GameEndingResponse,
@@ -157,6 +157,9 @@ class ProcessActionUseCase:
             [msg.content for msg in recent_messages if msg.is_ai_response]
         )
 
+        # Parse current game state
+        game_state = GameState.from_dict(session.game_state)
+
         prompt = GameMasterPrompt(
             scenario_name="",  # TODO: Load from session
             world_setting="",
@@ -164,6 +167,7 @@ class ProcessActionUseCase:
             character_description="",
             current_location=session.current_location,
             recent_events=recent_events,
+            game_state=game_state,
         )
 
         # Generate LLM response
@@ -172,25 +176,46 @@ class ProcessActionUseCase:
             messages=messages_for_llm,
         )
 
-        # 3. Validate ownership and status
-        self._validate_session(session, user_id)
+        # Try to parse JSON response
+        parsed = GameMasterService.parse_llm_response(llm_response.content)
 
-        # 4. Advance turn (domain logic)
-        # ... (skip unchanged lines)
+        if parsed:
+            # Extract structured data
+            narrative = GameMasterService.extract_narrative_from_parsed(
+                parsed, llm_response.content
+            )
+            options = GameMasterService.extract_options_from_parsed(parsed)
+            state_changes = GameMasterService.extract_state_changes(parsed)
 
-        # Import settings inside method to avoid circular import if necessary,
-        # or use self._settings if injected. Here we use global settings for simplicity as usually done in this project.
+            # Update session state
+            session = session.update_game_state(state_changes)
+
+            # Update location if changed
+            if state_changes.location:
+                session = session.update_location(state_changes.location)
+        else:
+            # Fallback to text parsing if JSON parsing fails
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Failed to parse JSON from LLM response: {llm_response.content[:200]}"
+            )
+
+            narrative = llm_response.content
+            options = GameMasterService.extract_action_options(
+                llm_response.content
+            )
+
+        # Generate illustration based on narrative
         from config.settings import settings
 
-        # 설정된 턴 간격마다 삽화 생성
         image_url = None
         interval = settings.image_generation_interval
 
         # 0 나누기 방지 및 1 이상일 때만 생성
         if interval > 0 and session.turn_count % interval == 0:
-            image_url = await self._generate_illustration(
-                llm_response.content, session
-            )
+            image_url = await self._generate_illustration(narrative, session)
 
         # Save AI message with image_url
         ai_message = GameMessageEntity(
@@ -206,11 +231,6 @@ class ProcessActionUseCase:
         )
         await self._message_repo.create(ai_message)
 
-        # Extract options (도메인 서비스 활용)
-        options = GameMasterService.extract_action_options(
-            llm_response.content
-        )
-
         return GameActionResponse(
             message=GameMessageResponse(
                 id=ai_message.id,
@@ -220,7 +240,7 @@ class ProcessActionUseCase:
                 image_url=image_url,
                 created_at=ai_message.created_at,
             ),
-            narrative=llm_response.content,
+            narrative=narrative,
             options=options,
             turn_count=session.turn_count,
             max_turns=session.max_turns,
