@@ -215,6 +215,9 @@ class GameMessage(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    image_url: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True
+    )  # 삽화 URL
 
     # Relationships
     session: Mapped["GameSession"] = relationship(

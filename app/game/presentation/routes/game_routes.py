@@ -23,13 +23,13 @@ from app.game.application.use_cases.start_game import StartGameInput
 from app.game.dependencies import (
     CacheServiceDep,
     CreateCharacterDep,
+    DeleteSessionDep,
     GetCharactersDep,
     GetScenariosDep,
     GetSessionHistoryDep,
     GetUserSessionsDep,
     ProcessActionDep,
     StartGameDep,
-    DeleteSessionDep,
 )
 from app.game.presentation.routes.schemas.request import (
     CreateCharacterRequest,

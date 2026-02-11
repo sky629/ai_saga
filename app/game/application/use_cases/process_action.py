@@ -118,7 +118,9 @@ class ProcessActionUseCase:
         if GameMasterService.should_end_game(session):
             response = await self._handle_ending(session, recent_messages)
         else:
-            response = await self._handle_normal_turn(session, recent_messages)
+            response = await self._handle_normal_turn(
+                session, user_id, recent_messages
+            )
 
         # 8. Save session state
         await self._session_repo.save(session)
@@ -141,6 +143,7 @@ class ProcessActionUseCase:
     async def _handle_normal_turn(
         self,
         session: GameSessionEntity,
+        user_id: UUID,
         recent_messages: list[GameMessageEntity],
     ) -> GameActionResponse:
         """일반 턴 처리."""
@@ -169,7 +172,27 @@ class ProcessActionUseCase:
             messages=messages_for_llm,
         )
 
-        # Save AI message
+        # 3. Validate ownership and status
+        self._validate_session(session, user_id)
+
+        # 4. Advance turn (domain logic)
+        # ... (skip unchanged lines)
+
+        # Import settings inside method to avoid circular import if necessary,
+        # or use self._settings if injected. Here we use global settings for simplicity as usually done in this project.
+        from config.settings import settings
+
+        # 설정된 턴 간격마다 삽화 생성
+        image_url = None
+        interval = settings.image_generation_interval
+
+        # 0 나누기 방지 및 1 이상일 때만 생성
+        if interval > 0 and session.turn_count % interval == 0:
+            image_url = await self._generate_illustration(
+                llm_response.content, session
+            )
+
+        # Save AI message with image_url
         ai_message = GameMessageEntity(
             id=get_uuid7(),
             session_id=session.id,
@@ -178,6 +201,7 @@ class ProcessActionUseCase:
             token_count=(
                 llm_response.usage.total_tokens if llm_response.usage else None
             ),
+            image_url=image_url,
             created_at=get_utc_datetime(),
         )
         await self._message_repo.create(ai_message)
@@ -193,6 +217,7 @@ class ProcessActionUseCase:
                 role=ai_message.role.value,
                 content=ai_message.content,
                 parsed_response=None,
+                image_url=image_url,
                 created_at=ai_message.created_at,
             ),
             narrative=llm_response.content,
@@ -200,9 +225,7 @@ class ProcessActionUseCase:
             turn_count=session.turn_count,
             max_turns=session.max_turns,
             is_ending=False,
-            image_url=await self._generate_illustration(
-                llm_response.content, session
-            ),
+            image_url=image_url,
         )
 
     async def _handle_ending(
@@ -315,10 +338,10 @@ class ProcessActionUseCase:
         if not self._image_service:
             return None
 
-        # 간단한 프롬프트 생성 (향후 개선 가능)
+        # 픽셀 아트 스타일 프롬프트 (Pixel Art, Retro Game Style)
         illustration_prompt = (
-            f"Fantasy game illustration: {narrative[:300]}. "
-            "Digital art style, vibrant colors, detailed scene."
+            f"Pixel art style game illustration: {narrative[:300]}. "
+            "Retro 16-bit rpg game aesthetic, detailed pixel art, vibrant colors."
         )
 
         return await self._image_service.generate_image(

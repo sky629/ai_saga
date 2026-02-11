@@ -110,6 +110,7 @@ class GameSessionResponse(BaseModel):
     ending_type: Optional[str] = None
     started_at: datetime
     last_activity_at: datetime
+    image_url: Optional[str] = None  # 초기 삽화 URL
 
 
 class GameMessageResponse(BaseModel):
@@ -121,6 +122,7 @@ class GameMessageResponse(BaseModel):
     role: str
     content: str
     parsed_response: Optional[dict] = None
+    image_url: Optional[str] = None
     created_at: datetime
 
 

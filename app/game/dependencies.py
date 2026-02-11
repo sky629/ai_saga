@@ -18,10 +18,10 @@ from app.game.application.queries import (
 from app.game.application.queries.get_characters import GetCharactersQuery
 from app.game.application.use_cases import (
     CreateCharacterUseCase,
+    DeleteSessionUseCase,
     GenerateEndingUseCase,
     ProcessActionUseCase,
     StartGameUseCase,
-    DeleteSessionUseCase,
 )
 from app.game.container import GameContainer
 

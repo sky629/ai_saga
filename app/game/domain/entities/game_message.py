@@ -23,6 +23,7 @@ class GameMessageEntity(BaseModel):
     content: str = Field(min_length=1)
     parsed_response: Optional[dict] = None
     token_count: Optional[int] = Field(ge=0, default=None)
+    image_url: Optional[str] = None
     created_at: datetime
 
     # === Domain Methods ===

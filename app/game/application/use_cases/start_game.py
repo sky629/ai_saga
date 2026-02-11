@@ -15,6 +15,7 @@ from app.game.application.ports import (
     CharacterRepositoryInterface,
     GameMessageRepositoryInterface,
     GameSessionRepositoryInterface,
+    ImageGenerationServiceInterface,
     LLMServiceInterface,
     ScenarioRepositoryInterface,
 )
@@ -49,12 +50,14 @@ class StartGameUseCase:
         scenario_repository: ScenarioRepositoryInterface,
         message_repository: GameMessageRepositoryInterface,
         llm_service: LLMServiceInterface,
+        image_service: Optional[ImageGenerationServiceInterface] = None,
     ):
         self._session_repo = session_repository
         self._character_repo = character_repository
         self._scenario_repo = scenario_repository
         self._message_repo = message_repository
         self._llm = llm_service
+        self._image_service = image_service
 
     async def execute(
         self, user_id: UUID, input_data: StartGameInput
@@ -106,7 +109,9 @@ class StartGameUseCase:
         session = await self._session_repo.save(session)
 
         # 7. Generate initial narrative
-        await self._generate_initial_narrative(session, character, scenario)
+        initial_image_url = await self._generate_initial_narrative(
+            session, character, scenario
+        )
 
         # 8. Return response
         return GameSessionResponse(
@@ -120,6 +125,7 @@ class StartGameUseCase:
             ending_type=None,
             started_at=session.started_at,
             last_activity_at=session.last_activity_at,
+            image_url=initial_image_url,
         )
 
     async def _generate_initial_narrative(
@@ -127,8 +133,8 @@ class StartGameUseCase:
         session: GameSessionEntity,
         character,  # CharacterEntity
         scenario,  # ScenarioEntity
-    ) -> None:
-        """초기 게임 내러티브 생성."""
+    ) -> Optional[str]:
+        """초기 게임 내러티브 및 삽화 생성."""
         prompt = GameMasterPrompt(
             scenario_name=scenario.name,
             world_setting=scenario.world_setting,
@@ -149,6 +155,21 @@ class StartGameUseCase:
         )
 
         # Save initial message
+        initial_image_url = None
+        # Generate initial illustration
+        if self._image_service:
+            # 픽셀 아트 스타일 프롬프트 (Pixel Art, Retro Game Style)
+            illustration_prompt = (
+                f"Pixel art style game illustration: {response.content[:300]}. "
+                "Retro 16-bit rpg game aesthetic, detailed pixel art, vibrant colors."
+            )
+            initial_image_url = await self._image_service.generate_image(
+                prompt=illustration_prompt,
+                session_id=str(session.id),
+                user_id=str(character.id),  # character_id를 user_id 대신 사용
+            )
+
+        # Save initial message with image_url
         initial_message = GameMessageEntity(
             id=get_uuid7(),
             session_id=session.id,
@@ -157,6 +178,9 @@ class StartGameUseCase:
             token_count=(
                 response.usage.total_tokens if response.usage else None
             ),
+            image_url=initial_image_url,
             created_at=get_utc_datetime(),
         )
         await self._message_repo.create(initial_message)
+
+        return initial_image_url

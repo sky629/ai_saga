@@ -17,10 +17,10 @@ from app.game.application.ports import (
 )
 from app.game.application.use_cases import (
     CreateCharacterUseCase,
+    DeleteSessionUseCase,
     GenerateEndingUseCase,
     ProcessActionUseCase,
     StartGameUseCase,
-    DeleteSessionUseCase,
 )
 from app.game.infrastructure.adapters import (
     CacheServiceAdapter,
@@ -111,6 +111,7 @@ class GameContainer:
             scenario_repository=self.scenario_repository(),
             message_repository=self.message_repository(),
             llm_service=self.llm_service,
+            image_service=self.image_service,
         )
 
     def generate_ending_use_case(self) -> GenerateEndingUseCase:

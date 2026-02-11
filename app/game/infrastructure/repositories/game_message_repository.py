@@ -26,6 +26,8 @@ class GameMessageRepositoryImpl(GameMessageRepositoryInterface):
             content=message.content,
             parsed_response=message.parsed_response,
             token_count=message.token_count,
+            image_url=message.image_url,
+            created_at=message.created_at,
         )
         self._db.add(orm)
         await self._db.flush()
