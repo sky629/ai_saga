@@ -39,6 +39,7 @@ class SessionListResponse(BaseModel):
     started_at: datetime
     last_activity_at: datetime
     ending_type: Optional[str] = None
+    character: "CharacterResponse"
 
 
 class MessageHistoryResponse(BaseModel):
@@ -107,6 +108,7 @@ class GameSessionResponse(BaseModel):
     game_state: dict
     status: str
     turn_count: int
+    max_turns: int  # 추가: 턴 정보 완성
     ending_type: Optional[str] = None
     started_at: datetime
     last_activity_at: datetime

@@ -1,9 +1,7 @@
 """Unit tests for GameStateService."""
 
-import pytest
-
 from app.game.domain.services import GameStateService
-from app.game.domain.value_objects import GameState, StateChanges
+from app.game.domain.value_objects import StateChanges
 
 
 class TestGameStateService:

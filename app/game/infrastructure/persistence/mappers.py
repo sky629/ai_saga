@@ -36,6 +36,7 @@ class GameSessionMapper:
 
         return GameSessionEntity(
             id=orm.id,
+            user_id=orm.user_id,
             character_id=orm.character_id,
             scenario_id=orm.scenario_id,
             current_location=orm.current_location,

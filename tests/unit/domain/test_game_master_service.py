@@ -1,7 +1,5 @@
 """Unit tests for GameMasterService."""
 
-import pytest
-
 from app.game.domain.services import GameMasterService
 from app.game.domain.value_objects import StateChanges
 

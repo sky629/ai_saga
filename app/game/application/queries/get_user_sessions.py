@@ -32,6 +32,7 @@ class SessionListItem(BaseModel):
     started_at: datetime
     last_activity_at: datetime
     ending_type: Optional[str] = None
+    character: object  # CharacterEntity or dict
 
 
 class GetUserSessionsQuery:
@@ -51,6 +52,8 @@ class GetUserSessionsQuery:
         cursor: Optional[UUID] = None,
     ) -> list[SessionListItem]:
         """사용자의 게임 세션 목록 조회."""
+        from app.game.infrastructure.persistence.mappers import CharacterMapper
+
         # 사용자의 캐릭터 ID 조회
         char_result = await self._db.execute(
             select(Character.id).where(Character.user_id == user_id)
@@ -114,6 +117,7 @@ class GetUserSessionsQuery:
                 started_at=s.started_at,
                 last_activity_at=s.last_activity_at,
                 ending_type=s.ending_type,
+                character=CharacterMapper.to_entity(s.character),
             )
             for s in sessions
         ]

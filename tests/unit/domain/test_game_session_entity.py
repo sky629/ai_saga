@@ -1,7 +1,5 @@
 """Unit tests for GameSession entity."""
 
-import pytest
-
 from app.common.utils.datetime import get_utc_datetime
 from app.common.utils.id_generator import get_uuid7
 from app.game.domain.entities import GameSessionEntity
@@ -20,6 +18,7 @@ class TestGameSessionEntity:
         """Test update_game_state adds items to inventory."""
         session = GameSessionEntity(
             id=get_uuid7(),
+            user_id=get_uuid7(),
             character_id=get_uuid7(),
             scenario_id=get_uuid7(),
             current_location="start",
@@ -43,6 +42,7 @@ class TestGameSessionEntity:
         """Test update_game_state preserves existing state."""
         session = GameSessionEntity(
             id=get_uuid7(),
+            user_id=get_uuid7(),
             character_id=get_uuid7(),
             scenario_id=get_uuid7(),
             current_location="start",
@@ -65,6 +65,7 @@ class TestGameSessionEntity:
         """Test update_game_state updates visited_locations."""
         session = GameSessionEntity(
             id=get_uuid7(),
+            user_id=get_uuid7(),
             character_id=get_uuid7(),
             scenario_id=get_uuid7(),
             current_location="start",
@@ -86,6 +87,7 @@ class TestGameSessionEntity:
         """Test update_game_state adds NPCs to met_npcs."""
         session = GameSessionEntity(
             id=get_uuid7(),
+            user_id=get_uuid7(),
             character_id=get_uuid7(),
             scenario_id=get_uuid7(),
             current_location="start",
@@ -107,6 +109,7 @@ class TestGameSessionEntity:
         """Test update_game_state adds discoveries."""
         session = GameSessionEntity(
             id=get_uuid7(),
+            user_id=get_uuid7(),
             character_id=get_uuid7(),
             scenario_id=get_uuid7(),
             current_location="start",
@@ -128,6 +131,7 @@ class TestGameSessionEntity:
         """Test update_game_state removes items."""
         session = GameSessionEntity(
             id=get_uuid7(),
+            user_id=get_uuid7(),
             character_id=get_uuid7(),
             scenario_id=get_uuid7(),
             current_location="start",
@@ -150,6 +154,7 @@ class TestGameSessionEntity:
         """Test update_game_state updates last_activity_at."""
         session = GameSessionEntity(
             id=get_uuid7(),
+            user_id=get_uuid7(),
             character_id=get_uuid7(),
             scenario_id=get_uuid7(),
             current_location="start",
@@ -170,6 +175,7 @@ class TestGameSessionEntity:
         """Test update_game_state returns new instance (immutable)."""
         session = GameSessionEntity(
             id=get_uuid7(),
+            user_id=get_uuid7(),
             character_id=get_uuid7(),
             scenario_id=get_uuid7(),
             current_location="start",
@@ -191,6 +197,7 @@ class TestGameSessionEntity:
         """Test update_game_state with multiple changes."""
         session = GameSessionEntity(
             id=get_uuid7(),
+            user_id=get_uuid7(),
             character_id=get_uuid7(),
             scenario_id=get_uuid7(),
             current_location="start",
@@ -227,6 +234,7 @@ class TestExistingGameSessionMethods:
         """Test advance_turn increments turn count."""
         session = GameSessionEntity(
             id=get_uuid7(),
+            user_id=get_uuid7(),
             character_id=get_uuid7(),
             scenario_id=get_uuid7(),
             current_location="start",
@@ -247,6 +255,7 @@ class TestExistingGameSessionMethods:
         """Test complete sets status and ending."""
         session = GameSessionEntity(
             id=get_uuid7(),
+            user_id=get_uuid7(),
             character_id=get_uuid7(),
             scenario_id=get_uuid7(),
             current_location="start",
@@ -268,6 +277,7 @@ class TestExistingGameSessionMethods:
         """Test update_location changes current_location."""
         session = GameSessionEntity(
             id=get_uuid7(),
+            user_id=get_uuid7(),
             character_id=get_uuid7(),
             scenario_id=get_uuid7(),
             current_location="start",

@@ -5,11 +5,13 @@ Command와 분리된 읽기 전용 쿼리입니다.
 """
 
 from .get_scenarios import GetScenariosQuery
+from .get_session import GetSessionQuery
 from .get_session_history import GetSessionHistoryQuery
 from .get_user_sessions import GetUserSessionsQuery
 
 __all__ = [
     "GetScenariosQuery",
+    "GetSessionQuery",
     "GetUserSessionsQuery",
     "GetSessionHistoryQuery",
 ]

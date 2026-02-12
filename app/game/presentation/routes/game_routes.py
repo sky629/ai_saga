@@ -26,6 +26,7 @@ from app.game.dependencies import (
     DeleteSessionDep,
     GetCharactersDep,
     GetScenariosDep,
+    GetSessionDep,
     GetSessionHistoryDep,
     GetUserSessionsDep,
     ProcessActionDep,
@@ -162,6 +163,51 @@ async def start_game(
     return result
 
 
+@game_router_v1.get(
+    "/sessions/{session_id}/",
+    response_model=GameSessionResponse,
+)
+async def get_session(
+    session_id: UUID,
+    query: GetSessionDep,
+    current_user: User = Depends(get_current_user),
+):
+    """게임 세션 단건 조회.
+
+    세션의 상세 정보를 조회합니다. game_state를 포함한 모든 정보를 반환합니다.
+    자신이 소유한 세션만 조회 가능합니다.
+    """
+    session = await query.execute(session_id, current_user.id)
+
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found",
+        )
+
+    # game_state 정리: 채팅창에 이미 표시되는 정보 제거
+    cleaned_game_state = {
+        k: v
+        for k, v in session.game_state.items()
+        if k not in ["discoveries", "visited_locations"]
+    }
+
+    # 응답 생성 (game_state만 정리)
+    return GameSessionResponse(
+        id=session.id,
+        character_id=session.character_id,
+        scenario_id=session.scenario_id,
+        current_location=session.current_location,
+        game_state=cleaned_game_state,
+        status=session.status.value,
+        turn_count=session.turn_count,
+        max_turns=session.max_turns,
+        ending_type=session.ending_type.value if session.ending_type else None,
+        started_at=session.started_at,
+        last_activity_at=session.last_activity_at,
+    )
+
+
 @game_router_v1.delete(
     "/sessions/{session_id}/",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -206,7 +252,25 @@ async def submit_action(
     async with cache_service.lock(lock_key, ttl_ms=20000):  # 20s lock
         # TODO: llm 응답을 입력으로 이미지를 생성해서 같이 반환
 
-        result = await use_case.execute(current_user.id, input_data)
+        try:
+            result = await use_case.execute(current_user.id, input_data)
+        except ValueError as e:
+            error_msg = str(e)
+            if "completed" in error_msg.lower():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Session is already completed. Cannot process further actions.",
+                )
+            elif (
+                "not active" in error_msg.lower()
+                or "not in active state" in error_msg.lower()
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=error_msg,
+                )
+            # 다른 ValueError는 그대로 re-raise
+            raise
 
     if result.is_cached:
         response.headers["X-Is-Idempotent"] = "true"

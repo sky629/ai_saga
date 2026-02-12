@@ -14,6 +14,7 @@ from app.common.utils.datetime import get_utc_datetime
 from app.common.utils.id_generator import get_uuid7
 from app.game.application.ports import (
     CacheServiceInterface,
+    CharacterRepositoryInterface,
     GameMessageRepositoryInterface,
     GameSessionRepositoryInterface,
     ImageGenerationServiceInterface,
@@ -58,12 +59,14 @@ class ProcessActionUseCase:
         self,
         session_repository: GameSessionRepositoryInterface,
         message_repository: GameMessageRepositoryInterface,
+        character_repository: CharacterRepositoryInterface,
         llm_service: LLMServiceInterface,
         cache_service: CacheServiceInterface,
         image_service: Optional[ImageGenerationServiceInterface] = None,
     ):
         self._session_repo = session_repository
         self._message_repo = message_repository
+        self._character_repo = character_repository
         self._llm = llm_service
         self._cache = cache_service
         self._image_service = image_service
@@ -116,9 +119,11 @@ class ProcessActionUseCase:
 
         # 7. Check if final turn (domain logic)
         if GameMasterService.should_end_game(session):
-            response = await self._handle_ending(session, recent_messages)
+            session, response = await self._handle_ending(
+                session, recent_messages
+            )
         else:
-            response = await self._handle_normal_turn(
+            session, response = await self._handle_normal_turn(
                 session, user_id, recent_messages
             )
 
@@ -135,17 +140,28 @@ class ProcessActionUseCase:
         self, session: GameSessionEntity, user_id: UUID
     ) -> None:
         """세션 유효성 검증."""
-        # Note: user_id 검증은 Character를 통해 해야 하지만,
-        # 현재는 세션 상태만 확인 (추후 Character 조회 추가)
+        from app.game.domain.value_objects import SessionStatus
+
+        # Check if session is already completed
+        if session.status == SessionStatus.COMPLETED:
+            # 상태가 이미 완료라면, 추가 액션 처리 불가
+            pass
+            # 단, 이전에 완료된 요청에 대한 재요청(idempotency)은 위에서 캐시로 처리됨.
+            # 여기까지 왔다는 건 새로운 액션이라는 뜻이므로 에러 처리.
+            raise ValueError(
+                "Session is already completed. Cannot process further actions."
+            )
+
+        # Check if session is in active state
         if not session.is_active:
-            raise ValueError("Session is not active")
+            raise ValueError("Session is not in active state")
 
     async def _handle_normal_turn(
         self,
         session: GameSessionEntity,
         user_id: UUID,
         recent_messages: list[GameMessageEntity],
-    ) -> GameActionResponse:
+    ) -> tuple[GameSessionEntity, GameActionResponse]:
         """일반 턴 처리."""
         # Build prompt (도메인 서비스 활용)
         messages_for_llm = [
@@ -177,7 +193,12 @@ class ProcessActionUseCase:
         )
 
         # Try to parse JSON response
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         parsed = GameMasterService.parse_llm_response(llm_response.content)
+        logger.info(f"[DEBUG] LLM response parsed: {parsed is not None}")
 
         if parsed:
             # Extract structured data
@@ -193,6 +214,71 @@ class ProcessActionUseCase:
             # Update location if changed
             if state_changes.location:
                 session = session.update_location(state_changes.location)
+
+            # 🆕 Update Character HP and Inventory
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.info(
+                f"[DEBUG] state_changes: hp_change={state_changes.hp_change}, items_gained={state_changes.items_gained}, items_lost={state_changes.items_lost}"
+            )
+
+            if (
+                state_changes.hp_change != 0
+                or state_changes.items_gained
+                or state_changes.items_lost
+            ):
+                logger.info(
+                    f"[DEBUG] Updating character {session.character_id}"
+                )
+                character = await self._character_repo.get_by_id(
+                    session.character_id
+                )
+                if character:
+                    logger.info(
+                        f"[DEBUG] Character before update: hp={character.stats.hp}, inventory={character.inventory}"
+                    )
+                    # Update HP
+                    if state_changes.hp_change != 0:
+                        if state_changes.hp_change > 0:
+                            # Heal
+                            character = character.update_stats(
+                                character.stats.heal(state_changes.hp_change)
+                            )
+                        else:
+                            # Take damage
+                            character = character.update_stats(
+                                character.stats.take_damage(
+                                    abs(state_changes.hp_change)
+                                )
+                            )
+
+                    # Update Inventory (items_gained)
+                    for item in state_changes.items_gained:
+                        if item not in character.inventory:
+                            character = character.add_to_inventory(item)
+
+                    # Update Inventory (items_lost)
+                    for item in state_changes.items_lost:
+                        if item in character.inventory:
+                            character = character.remove_from_inventory(item)
+
+                    # Save updated character
+                    logger.info(
+                        f"[DEBUG] Character after update: hp={character.stats.hp}, inventory={character.inventory}"
+                    )
+                    try:
+                        saved_character = await self._character_repo.save(
+                            character
+                        )
+                        logger.info(
+                            f"[DEBUG] Character saved successfully: hp={saved_character.stats.hp}, inventory={saved_character.inventory}"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"[DEBUG] Character save FAILED: {type(e).__name__}: {e}"
+                        )
+                        raise
         else:
             # Fallback to text parsing if JSON parsing fails
             import logging
@@ -231,7 +317,7 @@ class ProcessActionUseCase:
         )
         await self._message_repo.create(ai_message)
 
-        return GameActionResponse(
+        response = GameActionResponse(
             message=GameMessageResponse(
                 id=ai_message.id,
                 role=ai_message.role.value,
@@ -248,11 +334,13 @@ class ProcessActionUseCase:
             image_url=image_url,
         )
 
+        return session, response
+
     async def _handle_ending(
         self,
         session: GameSessionEntity,
         recent_messages: list[GameMessageEntity],
-    ) -> GameEndingResponse:
+    ) -> tuple[GameSessionEntity, GameEndingResponse]:
         """게임 엔딩 처리."""
         messages_for_llm = [
             {"role": msg.role.value, "content": msg.content}
@@ -285,7 +373,7 @@ class ProcessActionUseCase:
 
         # Update session to completed
         session = session.complete(ending_type)
-        await self._session_repo.save(session)
+        # Note: We do NOT save here anymore. The caller (execute) handles saving.
 
         # Save ending message
         ending_message = GameMessageEntity(
@@ -301,7 +389,7 @@ class ProcessActionUseCase:
         )
         await self._message_repo.create(ending_message)
 
-        return GameEndingResponse(
+        response = GameEndingResponse(
             session_id=session.id,
             ending_type=ending_type.value,
             narrative=narrative,
@@ -309,6 +397,8 @@ class ProcessActionUseCase:
             character_name="",  # TODO: Load from character
             scenario_name="",  # TODO: Load from scenario
         )
+
+        return session, response
 
     async def _check_idempotency(
         self, session_id: UUID, idempotency_key: str

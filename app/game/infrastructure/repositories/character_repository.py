@@ -44,12 +44,17 @@ class CharacterRepositoryImpl(CharacterRepositoryInterface):
 
     async def save(self, character: CharacterEntity) -> CharacterEntity:
         """캐릭터 저장."""
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         result = await self._db.execute(
             select(Character).where(Character.id == character.id)
         )
         orm = result.scalar_one_or_none()
 
         if orm is None:
+            logger.info(f"[DEBUG] Creating new character: {character.id}")
             orm = Character(
                 id=character.id,
                 user_id=character.user_id,
@@ -63,13 +68,19 @@ class CharacterRepositoryImpl(CharacterRepositoryInterface):
             )
             self._db.add(orm)
         else:
+            logger.info(f"[DEBUG] Updating existing character: {character.id}")
+            logger.info(
+                f"[DEBUG] ORM before update: inventory={orm.inventory}, stats={orm.stats}"
+            )
             updates = CharacterMapper.to_dict(character)
+            logger.info(f"[DEBUG] Updates to apply: {updates}")
             for key, value in updates.items():
                 setattr(orm, key, value)
+            logger.info(
+                f"[DEBUG] ORM after update: inventory={orm.inventory}, stats={orm.stats}"
+            )
 
         await self._db.flush()
-        await self._db.refresh(orm)
-
         await self._db.refresh(orm)
 
         return CharacterMapper.to_entity(orm)

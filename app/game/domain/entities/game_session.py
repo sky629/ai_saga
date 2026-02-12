@@ -24,6 +24,7 @@ class GameSessionEntity(BaseModel):
     model_config = {"frozen": True}
 
     id: UUID
+    user_id: UUID
     character_id: UUID
     scenario_id: UUID
     current_location: str

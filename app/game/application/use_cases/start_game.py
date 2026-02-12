@@ -92,6 +92,7 @@ class StartGameUseCase:
         now = get_utc_datetime()
         session = GameSessionEntity(
             id=get_uuid7(),
+            user_id=user_id,
             character_id=character.id,
             scenario_id=scenario.id,
             current_location=scenario.initial_location,
@@ -122,6 +123,7 @@ class StartGameUseCase:
             game_state=session.game_state,
             status=session.status.value,
             turn_count=session.turn_count,
+            max_turns=session.max_turns,
             ending_type=None,
             started_at=session.started_at,
             last_activity_at=session.last_activity_at,

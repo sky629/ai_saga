@@ -98,6 +98,7 @@ class GameContainer:
         return ProcessActionUseCase(
             session_repository=self.session_repository(),
             message_repository=self.message_repository(),
+            character_repository=self.character_repository(),
             llm_service=self.llm_service,
             cache_service=self.cache_service,
             image_service=self.image_service,
@@ -167,6 +168,12 @@ class GameContainer:
         )
 
         return GetCharactersQuery(self._db)
+
+    def get_session_query(self):
+        """게임 세션 단건 조회 쿼리."""
+        from app.game.application.queries import GetSessionQuery
+
+        return GetSessionQuery(self.session_repository())
 
 
 # === FastAPI Depends Integration ===

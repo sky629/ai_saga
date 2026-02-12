@@ -13,6 +13,7 @@ from app.game.application.ports import CacheServiceInterface
 from app.game.application.queries import (
     GetScenariosQuery,
     GetSessionHistoryQuery,
+    GetSessionQuery,
     GetUserSessionsQuery,
 )
 from app.game.application.queries.get_characters import GetCharactersQuery
@@ -140,6 +141,13 @@ def get_characters_query(
     return container.get_characters_query()
 
 
+def get_session_query(
+    container: Annotated[GameContainer, Depends(get_read_container)],
+) -> GetSessionQuery:
+    """GetSessionQuery 의존성."""
+    return container.get_session_query()
+
+
 # === Query Type Aliases ===
 
 GetScenariosDep = Annotated[GetScenariosQuery, Depends(get_scenarios_query)]
@@ -150,3 +158,4 @@ GetSessionHistoryDep = Annotated[
     GetSessionHistoryQuery, Depends(get_session_history_query)
 ]
 GetCharactersDep = Annotated[GetCharactersQuery, Depends(get_characters_query)]
+GetSessionDep = Annotated[GetSessionQuery, Depends(get_session_query)]

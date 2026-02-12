@@ -59,6 +59,10 @@ class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
 
     async def save(self, session: GameSessionEntity) -> GameSessionEntity:
         """세션 저장 (생성 또는 업데이트)."""
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         # Check if exists
         result = await self._db.execute(
             select(GameSession).where(GameSession.id == session.id)
@@ -66,9 +70,11 @@ class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
         orm = result.scalar_one_or_none()
 
         if orm is None:
+            logger.info(f"[DEBUG] Creating new session: {session.id}")
             # Create new
             orm = GameSession(
                 id=session.id,
+                user_id=session.user_id,
                 character_id=session.character_id,
                 scenario_id=session.scenario_id,
                 current_location=session.current_location,
@@ -86,9 +92,21 @@ class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
             self._db.add(orm)
         else:
             # Update existing
+            logger.info(
+                f"[DEBUG] Updating existing session: {session.id} (Turn {session.turn_count}/{session.max_turns})"
+            )
+            logger.info(
+                f"[DEBUG] ORM before update: turn_count={orm.turn_count}, current_location={orm.current_location}, game_state keys={list(orm.game_state.keys()) if orm.game_state else []}"
+            )
             updates = GameSessionMapper.to_dict(session)
+            logger.info(
+                f"[DEBUG] Updates to apply: turn_count={updates.get('turn_count')}, current_location={updates.get('current_location')}, game_state keys={list(updates.get('game_state', {}).keys())}"
+            )
             for key, value in updates.items():
                 setattr(orm, key, value)
+            logger.info(
+                f"[DEBUG] ORM after update: turn_count={orm.turn_count}, current_location={orm.current_location}, game_state keys={list(orm.game_state.keys()) if orm.game_state else []}"
+            )
 
         await self._db.flush()
         await self._db.refresh(orm)
