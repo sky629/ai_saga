@@ -1,7 +1,7 @@
 services:
   # PostgreSQL Database
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: ai-saga-postgres
     environment:
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8"

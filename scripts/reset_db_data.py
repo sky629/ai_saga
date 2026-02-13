@@ -1,7 +1,9 @@
-
 import asyncio
+
 from sqlalchemy import text
+
 from app.common.storage.postgres import postgres_storage
+
 
 async def reset_data():
     async with postgres_storage.get_domain_write_session() as db:
@@ -11,6 +13,7 @@ async def reset_data():
         await db.execute(text("TRUNCATE TABLE characters CASCADE"))
         await db.commit()
         print("Done.")
+
 
 if __name__ == "__main__":
     asyncio.run(reset_data())

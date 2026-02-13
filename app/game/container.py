@@ -15,6 +15,9 @@ from app.game.application.ports import (
     LLMServiceInterface,
     ScenarioRepositoryInterface,
 )
+from app.game.application.services.embedding_cache_service import (
+    EmbeddingCacheService,
+)
 from app.game.application.use_cases import (
     CreateCharacterUseCase,
     DeleteSessionUseCase,
@@ -35,6 +38,9 @@ from app.game.infrastructure.repositories import (
     GameSessionRepositoryImpl,
     ScenarioRepositoryImpl,
 )
+from app.llm.embedding_service_interface import EmbeddingServiceInterface
+from app.llm.providers.gemini_embedding_provider import GeminiEmbeddingProvider
+from config.settings import settings
 
 
 class GameContainer:
@@ -49,6 +55,8 @@ class GameContainer:
         self._cache: CacheServiceInterface | None = None
         self._llm: LLMServiceInterface | None = None
         self._image: ImageGenerationServiceInterface | None = None
+        self._embedding: EmbeddingServiceInterface | None = None
+        self._embedding_cache: EmbeddingCacheService | None = None
 
     # === Service Singletons (per request) ===
 
@@ -72,6 +80,25 @@ class GameContainer:
         if self._image is None:
             self._image = ImageGenerationServiceAdapter()
         return self._image
+
+    @property
+    def embedding_service(self) -> EmbeddingServiceInterface:
+        """Embedding 서비스 (싱글톤)."""
+        if self._embedding is None:
+            self._embedding = GeminiEmbeddingProvider(
+                api_key=settings.gemini_api_key
+            )
+        return self._embedding
+
+    @property
+    def embedding_cache_service(self) -> EmbeddingCacheService:
+        """Embedding 캐싱 서비스 (싱글톤)."""
+        if self._embedding_cache is None:
+            self._embedding_cache = EmbeddingCacheService(
+                embedding_service=self.embedding_service,
+                cache_service=self.cache_service,
+            )
+        return self._embedding_cache
 
     # === Repository Factories ===
 
@@ -102,6 +129,7 @@ class GameContainer:
             llm_service=self.llm_service,
             cache_service=self.cache_service,
             image_service=self.image_service,
+            embedding_service=self.embedding_cache_service,  # ✅ 캐싱 적용
         )
 
     def start_game_use_case(self) -> StartGameUseCase:

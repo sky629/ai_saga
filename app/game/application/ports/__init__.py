@@ -95,6 +95,27 @@ class GameMessageRepositoryInterface(ABC):
         """최근 메시지 조회."""
         pass
 
+    @abstractmethod
+    async def get_similar_messages(
+        self,
+        embedding: list[float],
+        session_id: UUID,
+        limit: int = 5,
+        distance_threshold: float = 0.3,
+    ) -> list[GameMessageEntity]:
+        """벡터 유사도 기반 메시지 검색.
+
+        Args:
+            embedding: 검색 기준 벡터 (768차원)
+            session_id: 세션 ID (같은 세션 내에서만 검색)
+            limit: 최대 반환 개수
+            distance_threshold: 유사도 임계값 (코사인 거리, 낮을수록 유사)
+
+        Returns:
+            유사도 높은 순으로 정렬된 메시지 목록
+        """
+        pass
+
 
 class LLMServiceInterface(ABC):
     """LLM 서비스 인터페이스."""

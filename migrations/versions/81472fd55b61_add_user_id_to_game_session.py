@@ -8,8 +8,8 @@ Create Date: 2026-02-11 17:03:48.730082
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "81472fd55b61"
@@ -33,7 +33,7 @@ def upgrade() -> None:
         WHERE game_sessions.character_id = characters.id
         """
     )
-    
+
     # 3. Alter column to not null
     op.alter_column("game_sessions", "user_id", nullable=False)
 

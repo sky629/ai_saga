@@ -245,7 +245,7 @@ backups/
 
 # Task files (commented out to track development)
 # tasks.json
-# tasks/ 
+# tasks/
 
 # Claude Code and Task Master
 .claude

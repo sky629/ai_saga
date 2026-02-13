@@ -140,6 +140,7 @@ class GameMessageMapper:
             parsed_response=orm.parsed_response,
             token_count=orm.token_count,
             image_url=orm.image_url,
+            embedding=orm.embedding,
             created_at=orm.created_at,
         )
 

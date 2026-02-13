@@ -28,6 +28,7 @@ from app.game.presentation.routes.schemas.response import (
     GameEndingResponse,
     GameMessageResponse,
 )
+from app.llm.embedding_service_interface import EmbeddingServiceInterface
 from app.llm.prompts.game_master import GameMasterPrompt
 
 
@@ -62,6 +63,7 @@ class ProcessActionUseCase:
         character_repository: CharacterRepositoryInterface,
         llm_service: LLMServiceInterface,
         cache_service: CacheServiceInterface,
+        embedding_service: EmbeddingServiceInterface,
         image_service: Optional[ImageGenerationServiceInterface] = None,
     ):
         self._session_repo = session_repository
@@ -69,6 +71,7 @@ class ProcessActionUseCase:
         self._character_repo = character_repository
         self._llm = llm_service
         self._cache = cache_service
+        self._embedding = embedding_service
         self._image_service = image_service
 
     async def execute(
@@ -102,35 +105,59 @@ class ProcessActionUseCase:
         # 4. Advance turn (domain logic)
         session = session.advance_turn()
 
-        # 5. Save user message
+        # 5. Generate embedding for user action
+        action_embedding = await self._embedding.generate_embedding(
+            input_data.action
+        )
+
+        # 6. Save user message with embedding
         user_message = GameMessageEntity(
             id=get_uuid7(),
             session_id=session.id,
             role=MessageRole.USER,
             content=input_data.action,
+            embedding=action_embedding,
             created_at=get_utc_datetime(),
         )
         await self._message_repo.create(user_message)
 
-        # 6. Get recent messages for context
+        # 7. Build hybrid context (Sliding Window + RAG)
+        # 7.1. Get recent messages (sliding window)
         recent_messages = await self._message_repo.get_recent_messages(
-            session.id, limit=20
+            session.id, limit=10
         )
 
-        # 7. Check if final turn (domain logic)
+        # 7.2. Get similar messages (RAG)
+        rag_messages = await self._message_repo.get_similar_messages(
+            embedding=action_embedding,
+            session_id=session.id,
+            limit=5,
+            distance_threshold=0.3,
+        )
+
+        # 7.3. Merge contexts (deduplicate and sort by time)
+        from app.game.application.services.rag_context_builder import (
+            RAGContextBuilder,
+        )
+
+        all_context_messages = RAGContextBuilder.merge_contexts(
+            recent_messages, rag_messages
+        )
+
+        # 8. Check if final turn (domain logic)
         if GameMasterService.should_end_game(session):
             session, response = await self._handle_ending(
-                session, recent_messages
+                session, all_context_messages
             )
         else:
             session, response = await self._handle_normal_turn(
-                session, user_id, recent_messages
+                session, user_id, all_context_messages
             )
 
-        # 8. Save session state
+        # 9. Save session state
         await self._session_repo.save(session)
 
-        # 9. Cache response for idempotency
+        # 10. Cache response for idempotency
         cache_key = f"game:idempotency:{input_data.session_id}:{input_data.idempotency_key}"
         await self._cache_response(cache_key, response)
 
@@ -303,7 +330,12 @@ class ProcessActionUseCase:
         if interval > 0 and session.turn_count % interval == 0:
             image_url = await self._generate_illustration(narrative, session)
 
-        # Save AI message with image_url
+        # Generate embedding for AI response
+        ai_embedding = await self._embedding.generate_embedding(
+            llm_response.content
+        )
+
+        # Save AI message with image_url and embedding
         ai_message = GameMessageEntity(
             id=get_uuid7(),
             session_id=session.id,
@@ -313,6 +345,7 @@ class ProcessActionUseCase:
                 llm_response.usage.total_tokens if llm_response.usage else None
             ),
             image_url=image_url,
+            embedding=ai_embedding,
             created_at=get_utc_datetime(),
         )
         await self._message_repo.create(ai_message)

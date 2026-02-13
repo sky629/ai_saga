@@ -1,0 +1,57 @@
+# Pre-commit hooks configuration
+# See https://pre-commit.com for more information
+
+repos:
+  # 1. isort - Import 정렬 (app, tests만)
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        name: isort (import sorting)
+        args: ["--profile", "black"]
+        files: ^(app/|tests/)
+
+  # 2. black - 코드 포맷팅 (app, tests만)
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+        name: black (code formatting)
+        language_version: python3.13
+        files: ^(app/|tests/)
+
+  # 3. flake8 - 린팅 체크 (app, tests만)
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.1.1
+    hooks:
+      - id: flake8
+        name: flake8 (linting)
+        additional_dependencies: [flake8-pyproject]
+        files: ^(app/|tests/)
+
+  # 추가: 기본 파일 체크
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        name: Trim trailing whitespace
+      - id: end-of-file-fixer
+        name: Fix end of files
+      - id: check-yaml
+        name: Check YAML syntax
+      - id: check-json
+        name: Check JSON syntax
+      - id: check-added-large-files
+        name: Check for large files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+        name: Check for merge conflicts
+      - id: debug-statements
+        name: Check for debug statements
+
+# 커밋 메시지 체크 (선택사항)
+# - repo: https://github.com/commitizen-tools/commitizen
+#   rev: v3.12.0
+#   hooks:
+#     - id: commitizen
+#       stages: [commit-msg]

@@ -27,6 +27,7 @@ class GameMessageRepositoryImpl(GameMessageRepositoryInterface):
             parsed_response=message.parsed_response,
             token_count=message.token_count,
             image_url=message.image_url,
+            embedding=message.embedding,
             created_at=message.created_at,
         )
         self._db.add(orm)
@@ -51,3 +52,38 @@ class GameMessageRepositoryImpl(GameMessageRepositoryInterface):
         return [
             GameMessageMapper.to_entity(orm) for orm in reversed(list(orms))
         ]
+
+    async def get_similar_messages(
+        self,
+        embedding: list[float],
+        session_id: UUID,
+        limit: int = 5,
+        distance_threshold: float = 0.3,
+    ) -> list[GameMessageEntity]:
+        """벡터 유사도 기반 메시지 검색.
+
+        pgvector의 cosine distance 연산자(<=>)를 사용하여 유사한 메시지를 검색합니다.
+
+        Args:
+            embedding: 검색 기준 벡터 (768차원)
+            session_id: 세션 ID (같은 세션 내에서만 검색)
+            limit: 최대 반환 개수
+            distance_threshold: 유사도 임계값 (코사인 거리, 낮을수록 유사)
+
+        Returns:
+            유사도 높은 순으로 정렬된 메시지 목록
+        """
+        result = await self._db.execute(
+            select(GameMessage)
+            .where(GameMessage.session_id == session_id)
+            .where(GameMessage.embedding.isnot(None))
+            .where(
+                GameMessage.embedding.cosine_distance(embedding)
+                < distance_threshold
+            )
+            .order_by(GameMessage.embedding.cosine_distance(embedding))
+            .limit(limit)
+        )
+        orms = result.scalars().all()
+
+        return [GameMessageMapper.to_entity(orm) for orm in orms]

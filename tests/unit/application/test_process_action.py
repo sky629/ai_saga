@@ -58,12 +58,18 @@ class TestProcessActionOnCompletedSession:
         cache_service = AsyncMock()
         cache_service.get.return_value = None  # No cached response
 
+        embedding_service = AsyncMock()
+        embedding_service.generate_embedding.return_value = [
+            0.1
+        ] * 768  # Mock 768-dim vector
+
         return {
             "session_repo": session_repo,
             "message_repo": message_repo,
             "character_repo": character_repo,
             "llm_service": llm_service,
             "cache_service": cache_service,
+            "embedding_service": embedding_service,
         }
 
     @pytest.fixture
@@ -75,6 +81,7 @@ class TestProcessActionOnCompletedSession:
             character_repository=mock_repositories["character_repo"],
             llm_service=mock_repositories["llm_service"],
             cache_service=mock_repositories["cache_service"],
+            embedding_service=mock_repositories["embedding_service"],
         )
 
     async def test_process_action_on_completed_session_raises_value_error(

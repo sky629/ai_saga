@@ -6,6 +6,7 @@ All models use UUID v7 for IDs (time-sortable).
 from datetime import datetime
 from typing import Optional
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -217,6 +218,11 @@ class GameMessage(Base):
 
     # Token usage for this message
     token_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Vector embedding for RAG (768 dimensions for Gemini text-embedding-004)
+    embedding: Mapped[Optional[list[float]]] = mapped_column(
+        Vector(768), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

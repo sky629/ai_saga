@@ -9,9 +9,17 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 # Import all models to ensure they are loaded
-from app.auth.infrastructure.persistence.models.user_models import SocialAccount, User  # noqa
-from app.game.infrastructure.persistence.models.game_models import Scenario, Character, GameSession, GameMessage  # noqa
+from app.auth.infrastructure.persistence.models.user_models import (  # noqa
+    SocialAccount,
+    User,
+)
 from app.common.storage.postgres import Base
+from app.game.infrastructure.persistence.models.game_models import (  # noqa
+    Character,
+    GameMessage,
+    GameSession,
+    Scenario,
+)
 from config.settings import settings
 
 # this is the Alembic Config object, which provides
@@ -19,7 +27,9 @@ from config.settings import settings
 config = context.config
 
 # Set the database URL from settings - convert to asyncpg format
-postgres_url = settings.postgres_url.replace("postgresql://", "postgresql+asyncpg://")
+postgres_url = settings.postgres_url.replace(
+    "postgresql://", "postgresql+asyncpg://"
+)
 config.set_main_option("sqlalchemy.url", postgres_url)
 
 # Interpret the config file for Python logging.

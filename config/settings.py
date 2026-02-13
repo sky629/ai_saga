@@ -47,7 +47,9 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
 
     # Image (Image Generation)
-    image_model: str = "gemini-2.5-flash-image"  # Default, override with IMAGE_MODEL env var
+    image_model: str = (
+        "gemini-2.5-flash-image"  # Default, override with IMAGE_MODEL env var
+    )
     image_generation_interval: int = 3  # Turns per image generation
 
     # Cloudflare R2

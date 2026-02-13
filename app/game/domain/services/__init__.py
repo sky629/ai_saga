@@ -2,5 +2,6 @@
 
 from .game_master_service import GameMasterService
 from .game_state_service import GameStateService
+from .vector_similarity_service import VectorSimilarityService
 
-__all__ = ["GameMasterService", "GameStateService"]
+__all__ = ["GameMasterService", "GameStateService", "VectorSimilarityService"]
