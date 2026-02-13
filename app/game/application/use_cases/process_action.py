@@ -324,11 +324,20 @@ class ProcessActionUseCase:
         from config.settings import settings
 
         image_url = None
-        interval = settings.image_generation_interval
 
-        # 0 나누기 방지 및 1 이상일 때만 생성
-        if interval > 0 and session.turn_count % interval == 0:
-            image_url = await self._generate_illustration(narrative, session)
+        # 이미지 생성 (플래그로 on/off 제어)
+        if settings.image_generation_enabled:
+            interval = settings.image_generation_interval
+            # interval=0: 매 턴마다 생성
+            # interval>0: N턴마다 생성 (예: 3턴마다)
+            should_generate = (interval == 0) or (
+                session.turn_count % interval == 0
+            )
+
+            if should_generate:
+                image_url = await self._generate_illustration(
+                    narrative, session
+                )
 
         # Generate embedding for AI response
         ai_embedding = await self._embedding.generate_embedding(
