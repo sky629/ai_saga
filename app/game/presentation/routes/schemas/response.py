@@ -150,6 +150,7 @@ class GameEndingResponse(BaseModel):
     total_turns: int
     character_name: str
     scenario_name: str
+    is_ending: bool = True
 
 
 class MessageResponse(BaseModel):

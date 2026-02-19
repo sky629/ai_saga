@@ -390,7 +390,7 @@ class ProcessActionUseCase:
             options=options,
             turn_count=session.turn_count,
             max_turns=session.max_turns,
-            is_ending=False,
+            is_ending=session.remaining_turns <= 1,
             image_url=image_url,
         )
 
@@ -435,6 +435,10 @@ class ProcessActionUseCase:
         session = session.complete(ending_type)
         # Note: We do NOT save here anymore. The caller (execute) handles saving.
 
+        # Load character name
+        character = await self._character_repo.get_by_id(session.character_id)
+        character_name = character.name if character else ""
+
         # Save ending message
         ending_message = GameMessageEntity(
             id=get_uuid7(),
@@ -454,8 +458,8 @@ class ProcessActionUseCase:
             ending_type=ending_type.value,
             narrative=narrative,
             total_turns=session.turn_count,
-            character_name="",  # TODO: Load from character
-            scenario_name="",  # TODO: Load from scenario
+            character_name=character_name,
+            scenario_name="",  # TODO: requires scenario_repository
         )
 
         return session, response

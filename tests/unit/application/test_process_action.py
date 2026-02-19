@@ -4,7 +4,7 @@ Tests the business logic of action processing with mocked repositories.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -15,6 +15,10 @@ from app.game.application.use_cases.process_action import (
 )
 from app.game.domain.entities import GameSessionEntity
 from app.game.domain.value_objects import SessionStatus
+from app.game.presentation.routes.schemas.response import (
+    GameActionResponse,
+    GameEndingResponse,
+)
 
 
 @pytest.mark.asyncio
@@ -343,3 +347,202 @@ class TestImageGenerationFlag:
         mock_repositories_with_image[
             "image_service"
         ].generate_image.assert_not_called()
+
+
+@pytest.mark.asyncio
+class TestGameEndingDetection:
+    """Test game ending detection via is_ending flag."""
+
+    @pytest.fixture
+    def base_session(self):
+        """Base active session factory."""
+        now = datetime.now(timezone.utc)
+
+        def make_session(turn_count: int, max_turns: int = 10):
+            return GameSessionEntity(
+                id=uuid4(),
+                user_id=uuid4(),
+                character_id=uuid4(),
+                scenario_id=uuid4(),
+                current_location="Forest",
+                game_state={},
+                status=SessionStatus.ACTIVE,
+                turn_count=turn_count,
+                max_turns=max_turns,
+                ending_type=None,
+                started_at=now,
+                last_activity_at=now,
+            )
+
+        return make_session
+
+    def _make_repos(self, session):
+        """공통 mock repository 생성."""
+        session_repo = AsyncMock()
+        session_repo.get_by_id.return_value = session
+
+        message_repo = AsyncMock()
+        message_repo.get_recent_messages.return_value = []
+        message_repo.get_similar_messages.return_value = []
+
+        character_repo = AsyncMock()
+        character_mock = MagicMock()
+        character_mock.name = "테스트 캐릭터"
+        character_repo.get_by_id.return_value = character_mock
+
+        llm_service = AsyncMock()
+        llm_service.generate_response.return_value = AsyncMock(
+            content="You continue your journey.",
+            usage=AsyncMock(total_tokens=50),
+        )
+
+        cache_service = AsyncMock()
+        cache_service.get.return_value = None
+
+        embedding_service = AsyncMock()
+        embedding_service.generate_embedding.return_value = [0.1] * 768
+
+        return {
+            "session_repo": session_repo,
+            "message_repo": message_repo,
+            "character_repo": character_repo,
+            "llm_service": llm_service,
+            "cache_service": cache_service,
+            "embedding_service": embedding_service,
+        }
+
+    def _make_use_case(self, repos):
+        return ProcessActionUseCase(
+            session_repository=repos["session_repo"],
+            message_repository=repos["message_repo"],
+            character_repository=repos["character_repo"],
+            llm_service=repos["llm_service"],
+            cache_service=repos["cache_service"],
+            embedding_service=repos["embedding_service"],
+        )
+
+    @patch("config.settings.settings")
+    async def test_second_to_last_turn_has_is_ending_true(
+        self, mock_settings, base_session
+    ):
+        """Turn 9 (max=10): is_ending=True 경고 - 다음 턴이 마지막임을 알림."""
+        mock_settings.image_generation_enabled = False
+
+        # Given: turn_count=8, advance_turn() 후 9가 됨 → remaining_turns=1
+        session = base_session(turn_count=8, max_turns=10)
+        repos = self._make_repos(session)
+        use_case = self._make_use_case(repos)
+
+        input_data = ProcessActionInput(
+            session_id=session.id,
+            action="북쪽으로 이동",
+            idempotency_key="ending-warn-key",
+        )
+
+        # When
+        result = await use_case.execute(session.user_id, input_data)
+
+        # Then: GameActionResponse이며 is_ending=True
+        assert isinstance(result.response, GameActionResponse)
+        assert result.response.is_ending is True
+        assert result.response.turn_count == 9
+        assert result.response.max_turns == 10
+
+    @patch("config.settings.settings")
+    async def test_normal_turn_has_is_ending_false(
+        self, mock_settings, base_session
+    ):
+        """Turn 5 (max=10): is_ending=False - 아직 여러 턴 남음."""
+        mock_settings.image_generation_enabled = False
+
+        # Given: turn_count=4, advance_turn() 후 5가 됨 → remaining_turns=5
+        session = base_session(turn_count=4, max_turns=10)
+        repos = self._make_repos(session)
+        use_case = self._make_use_case(repos)
+
+        input_data = ProcessActionInput(
+            session_id=session.id,
+            action="동쪽으로 이동",
+            idempotency_key="normal-turn-key",
+        )
+
+        # When
+        result = await use_case.execute(session.user_id, input_data)
+
+        # Then: GameActionResponse이며 is_ending=False
+        assert isinstance(result.response, GameActionResponse)
+        assert result.response.is_ending is False
+
+    @patch("config.settings.settings")
+    async def test_final_turn_returns_game_ending_response(
+        self, mock_settings, base_session
+    ):
+        """Turn 10 (max=10): GameEndingResponse 반환 - 게임 종료."""
+        mock_settings.image_generation_enabled = False
+
+        # Given: turn_count=9, advance_turn() 후 10이 됨 → is_final_turn=True
+        session = base_session(turn_count=9, max_turns=10)
+        repos = self._make_repos(session)
+        repos["llm_service"].generate_response.return_value = AsyncMock(
+            content="[엔딩 유형]: victory\n[엔딩 내러티브]: 영웅은 마침내 승리했다.",
+            usage=AsyncMock(total_tokens=100),
+        )
+        use_case = self._make_use_case(repos)
+
+        input_data = ProcessActionInput(
+            session_id=session.id,
+            action="최후의 결전",
+            idempotency_key="final-turn-key",
+        )
+
+        # When
+        result = await use_case.execute(session.user_id, input_data)
+
+        # Then: GameEndingResponse 반환
+        assert isinstance(result.response, GameEndingResponse)
+        assert result.response.is_ending is True
+        assert result.response.total_turns == 10
+        assert result.response.session_id == session.id
+
+    @patch("config.settings.settings")
+    async def test_game_ending_response_has_character_name(
+        self, mock_settings, base_session
+    ):
+        """GameEndingResponse에 character_name이 실제 캐릭터 이름으로 채워짐."""
+        mock_settings.image_generation_enabled = False
+
+        # Given: turn_count=9 (마지막 턴)
+        session = base_session(turn_count=9, max_turns=10)
+        repos = self._make_repos(session)
+        repos["llm_service"].generate_response.return_value = AsyncMock(
+            content="[엔딩 유형]: neutral\n[엔딩 내러티브]: 모험은 끝났다.",
+            usage=AsyncMock(total_tokens=80),
+        )
+        use_case = self._make_use_case(repos)
+
+        input_data = ProcessActionInput(
+            session_id=session.id,
+            action="마지막 행동",
+            idempotency_key="char-name-key",
+        )
+
+        # When
+        result = await use_case.execute(session.user_id, input_data)
+
+        # Then: character_name이 빈 문자열이 아닌 실제 이름
+        assert isinstance(result.response, GameEndingResponse)
+        assert result.response.character_name == "테스트 캐릭터"
+
+
+def test_game_ending_response_is_ending_default_true():
+    """GameEndingResponse.is_ending 기본값은 True."""
+    response = GameEndingResponse(
+        session_id=uuid4(),
+        ending_type="victory",
+        narrative="게임이 끝났습니다.",
+        total_turns=10,
+        character_name="용사",
+        scenario_name="마왕 토벌",
+    )
+
+    assert response.is_ending is True

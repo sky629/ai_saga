@@ -140,7 +140,15 @@ class TestGetUserSessionsQuery:
 
         # Mock relationships
         mock_session.character = MagicMock()
+        mock_session.character.id = get_uuid7()
+        mock_session.character.user_id = get_uuid7()
+        mock_session.character.scenario_id = get_uuid7()
         mock_session.character.name = f"Character {index}"
+        mock_session.character.description = f"Description {index}"
+        mock_session.character.stats = {"hp": 100, "max_hp": 100, "level": 1}
+        mock_session.character.inventory = []
+        mock_session.character.is_active = True
+        mock_session.character.created_at = get_utc_datetime()
         mock_session.scenario = MagicMock()
         mock_session.scenario.name = f"Scenario {index}"
 
