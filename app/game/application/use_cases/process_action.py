@@ -252,6 +252,7 @@ class ProcessActionUseCase:
 
             if (
                 state_changes.hp_change != 0
+                or state_changes.experience_gained != 0
                 or state_changes.items_gained
                 or state_changes.items_lost
             ):
@@ -278,6 +279,23 @@ class ProcessActionUseCase:
                                 character.stats.take_damage(
                                     abs(state_changes.hp_change)
                                 )
+                            )
+
+                    # Update Experience
+                    if state_changes.experience_gained > 0:
+                        old_level = character.stats.level
+                        character = character.update_stats(
+                            character.stats.gain_experience(
+                                state_changes.experience_gained
+                            )
+                        )
+
+                        # Log level up
+                        if character.stats.level > old_level:
+                            logger.info(
+                                f"[LEVEL UP] {character.name}: "
+                                f"Lv{old_level} → Lv{character.stats.level} "
+                                f"(max_hp: {character.stats.max_hp})"
                             )
 
                     # Update Inventory (items_gained)

@@ -134,6 +134,7 @@ Some extra text here"""
         parsed = {
             "state_changes": {
                 "hp_change": -10,
+                "experience_gained": 50,
                 "items_gained": ["sword", "potion"],
                 "items_lost": ["torch"],
                 "location": "dungeon",
@@ -145,11 +146,26 @@ Some extra text here"""
         changes = GameMasterService.extract_state_changes(parsed)
 
         assert changes.hp_change == -10
+        assert changes.experience_gained == 50
         assert changes.items_gained == ["sword", "potion"]
         assert changes.items_lost == ["torch"]
         assert changes.location == "dungeon"
         assert changes.npcs_met == ["wizard", "merchant"]
         assert changes.discoveries == ["secret_door"]
+
+    def test_extract_state_changes_with_experience_gained(self):
+        """Test extracting StateChanges with experience_gained field."""
+        parsed = {
+            "state_changes": {
+                "experience_gained": 75,
+            }
+        }
+
+        changes = GameMasterService.extract_state_changes(parsed)
+
+        assert changes.experience_gained == 75
+        assert changes.hp_change == 0  # default
+        assert changes.items_gained == []  # default
 
     def test_extract_narrative_from_parsed(self):
         """Test extracting narrative from parsed JSON."""

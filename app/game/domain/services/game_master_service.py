@@ -134,6 +134,7 @@ class GameMasterService:
 
         return StateChanges(
             hp_change=changes_dict.get("hp_change", 0),
+            experience_gained=changes_dict.get("experience_gained", 0),
             items_gained=changes_dict.get("items_gained", []),
             items_lost=changes_dict.get("items_lost", []),
             location=changes_dict.get("location"),

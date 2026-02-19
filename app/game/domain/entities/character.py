@@ -15,6 +15,8 @@ class CharacterStats(BaseModel):
     hp: int = Field(ge=0, default=100)
     max_hp: int = Field(gt=0, default=100)
     level: int = Field(ge=1, default=1)
+    experience: int = Field(ge=0, default=0)
+    current_experience: int = Field(ge=0, default=0)
 
     def take_damage(self, amount: int) -> "CharacterStats":
         """데미지를 받은 새 스탯 반환."""
@@ -27,12 +29,67 @@ class CharacterStats(BaseModel):
         return self.model_copy(update={"hp": new_hp})
 
     def level_up(self) -> "CharacterStats":
-        """레벨업한 새 스탯 반환."""
+        """레벨업한 새 스탯 반환 (레벨에 비례한 스탯 상승)."""
+        hp_increase = 10 * self.level
         return self.model_copy(
             update={
                 "level": self.level + 1,
-                "max_hp": self.max_hp + 10,
-                "hp": self.max_hp + 10,  # Full heal on level up
+                "max_hp": self.max_hp + hp_increase,
+                "hp": self.max_hp + hp_increase,  # Full heal on level up
+            }
+        )
+
+    def experience_for_next_level(self) -> int:
+        """다음 레벨까지 필요한 경험치 계산.
+
+        Returns:
+            필요 경험치 (level × 100)
+        """
+        return self.level * 100
+
+    def gain_experience(self, amount: int) -> "CharacterStats":
+        """경험치 획득 및 자동 레벨업.
+
+        Args:
+            amount: 획득할 경험치량
+
+        Returns:
+            업데이트된 새 스탯 (레벨업 포함)
+        """
+        new_exp = self.experience + amount
+        new_current_exp = self.current_experience + amount
+        new_stats = self.model_copy(
+            update={
+                "experience": new_exp,
+                "current_experience": new_current_exp,
+            }
+        )
+
+        # 자동 레벨업 (여러 레벨 가능)
+        while (
+            new_stats.current_experience
+            >= new_stats.experience_for_next_level()
+        ):
+            new_stats = new_stats._level_up_once()
+
+        return new_stats
+
+    def _level_up_once(self) -> "CharacterStats":
+        """한 레벨 상승 (내부 메서드).
+
+        Returns:
+            레벨업된 새 스탯
+        """
+        required_exp = self.experience_for_next_level()
+        remaining_exp = self.current_experience - required_exp
+        hp_increase = 10 * self.level
+
+        return self.model_copy(
+            update={
+                "level": self.level + 1,
+                "max_hp": self.max_hp + hp_increase,
+                "hp": self.max_hp + hp_increase,  # Full heal on level up
+                "current_experience": remaining_exp,
             }
         )
 

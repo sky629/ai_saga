@@ -71,6 +71,7 @@ class StateChanges(BaseModel):
     model_config = {"frozen": True}
 
     hp_change: int = Field(default=0, description="HP 변화량")
+    experience_gained: int = Field(default=0, description="획득한 경험치")
     items_gained: list[str] = Field(
         default_factory=list, description="획득한 아이템"
     )

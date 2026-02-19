@@ -91,7 +91,13 @@ class Character(Base):
     stats: Mapped[dict] = mapped_column(
         JSONB,
         nullable=False,
-        default=lambda: {"hp": 100, "max_hp": 100, "level": 1},
+        default=lambda: {
+            "hp": 100,
+            "max_hp": 100,
+            "level": 1,
+            "experience": 0,
+            "current_experience": 0,
+        },
     )
     inventory: Mapped[list] = mapped_column(
         JSONB, nullable=False, default=lambda: []
