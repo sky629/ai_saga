@@ -7,7 +7,7 @@ import json
 import re
 from typing import Optional
 
-from app.game.domain.entities import GameSessionEntity
+from app.game.domain.entities import CharacterEntity, GameSessionEntity
 from app.game.domain.value_objects import EndingType, StateChanges
 
 
@@ -29,6 +29,18 @@ class GameMasterService:
             게임 종료 여부
         """
         return session.is_final_turn
+
+    @staticmethod
+    def should_end_game_by_death(character: CharacterEntity) -> bool:
+        """캐릭터 사망으로 게임 종료 여부 확인.
+
+        Args:
+            character: 현재 캐릭터
+
+        Returns:
+            캐릭터가 사망했는지 여부 (HP <= 0)
+        """
+        return not character.is_alive
 
     @staticmethod
     def parse_ending_type(llm_response: str) -> EndingType:

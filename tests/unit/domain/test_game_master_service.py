@@ -210,3 +210,47 @@ Some extra text here"""
         result = GameMasterService.extract_options_from_parsed(parsed)
 
         assert result == []
+
+
+class TestGameMasterServiceDeathCheck:
+    """GameMasterService death check tests."""
+
+    def test_should_end_game_by_death_when_hp_zero(self):
+        """Test should_end_game_by_death returns True when HP=0."""
+        from app.common.utils.datetime import get_utc_datetime
+        from app.common.utils.id_generator import get_uuid7
+        from app.game.domain.entities import CharacterEntity, CharacterStats
+
+        stats = CharacterStats(hp=0, max_hp=100)
+        character = CharacterEntity(
+            id=get_uuid7(),
+            user_id=get_uuid7(),
+            scenario_id=get_uuid7(),
+            name="Dead Character",
+            stats=stats,
+            created_at=get_utc_datetime(),
+        )
+
+        result = GameMasterService.should_end_game_by_death(character)
+
+        assert result is True
+
+    def test_should_end_game_by_death_when_hp_positive(self):
+        """Test should_end_game_by_death returns False when HP>0."""
+        from app.common.utils.datetime import get_utc_datetime
+        from app.common.utils.id_generator import get_uuid7
+        from app.game.domain.entities import CharacterEntity, CharacterStats
+
+        stats = CharacterStats(hp=50, max_hp=100)
+        character = CharacterEntity(
+            id=get_uuid7(),
+            user_id=get_uuid7(),
+            scenario_id=get_uuid7(),
+            name="Alive Character",
+            stats=stats,
+            created_at=get_utc_datetime(),
+        )
+
+        result = GameMasterService.should_end_game_by_death(character)
+
+        assert result is False
