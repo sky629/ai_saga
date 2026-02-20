@@ -128,6 +128,23 @@ class GameMessageResponse(BaseModel):
     created_at: datetime
 
 
+class DiceResultResponse(BaseModel):
+    """Dice result response model."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    roll: int
+    modifier: int
+    total: int
+    dc: int
+    is_success: bool
+    is_critical: bool
+    is_fumble: bool
+    check_type: str
+    damage: Optional[int] = None
+    display_text: str
+
+
 class GameActionResponse(BaseModel):
     """Response for a game action."""
 
@@ -139,6 +156,7 @@ class GameActionResponse(BaseModel):
     is_ending: bool = False
     state_changes: Optional[dict] = None
     image_url: Optional[str] = None  # 삽화 이미지 URL
+    dice_result: Optional[DiceResultResponse] = None
 
 
 class GameEndingResponse(BaseModel):
