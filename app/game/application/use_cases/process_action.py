@@ -21,16 +21,25 @@ from app.game.application.ports import (
     LLMServiceInterface,
     ScenarioRepositoryInterface,
 )
-from app.game.domain.entities import GameMessageEntity, GameSessionEntity
-from app.game.domain.services import GameMasterService
-from app.game.domain.value_objects import GameState, MessageRole
+from app.game.domain.entities import (
+    CharacterEntity,
+    GameMessageEntity,
+    GameSessionEntity,
+)
+from app.game.domain.services import DiceService, GameMasterService
+from app.game.domain.value_objects import EndingType, GameState, MessageRole
+from app.game.domain.value_objects.dice import DiceCheckType
 from app.game.presentation.routes.schemas.response import (
+    DiceResultResponse,
     GameActionResponse,
     GameEndingResponse,
     GameMessageResponse,
 )
 from app.llm.embedding_service_interface import EmbeddingServiceInterface
-from app.llm.prompts.game_master import GameMasterPrompt
+from app.llm.prompts.game_master import (
+    GameMasterPrompt,
+    build_dice_result_section,
+)
 
 
 class ProcessActionInput(BaseModel):
@@ -211,14 +220,27 @@ class ProcessActionUseCase:
         if not scenario:
             raise ValueError(f"Scenario {session.scenario_id} not found")
 
+        character = await self._character_repo.get_by_id(session.character_id)
+        if not character:
+            raise ValueError(f"Character {session.character_id} not found")
+
+        dice_result = DiceService.perform_check(
+            level=character.stats.level,
+            difficulty=scenario.difficulty,
+            check_type=DiceCheckType.COMBAT,
+        )
+
+        dice_result_section = build_dice_result_section(dice_result)
+
         prompt = GameMasterPrompt(
             scenario_name=scenario.name,
             world_setting=scenario.world_setting,
-            character_name="",
+            character_name=character.name,
             character_description="",
             current_location=session.current_location,
             recent_events=recent_events,
             game_state=game_state,
+            dice_result_section=dice_result_section,
         )
 
         # Generate LLM response
@@ -332,6 +354,20 @@ class ProcessActionUseCase:
                             f"[DEBUG] Character save FAILED: {type(e).__name__}: {e}"
                         )
                         raise
+
+                    if dice_result.is_fumble and dice_result.damage:
+                        character = character.update_stats(
+                            character.stats.take_damage(dice_result.damage)
+                        )
+                        character = await self._character_repo.save(character)
+
+                    if GameMasterService.should_end_game_by_death(character):
+                        session = session.complete(EndingType.DEFEAT)
+                        await self._session_repo.save(session)
+                        ending_response = await self._handle_death_ending(
+                            session, character, narrative, recent_messages
+                        )
+                        return session, ending_response
         else:
             # Fallback to text parsing if JSON parsing fails
             import logging
@@ -385,6 +421,21 @@ class ProcessActionUseCase:
         )
         await self._message_repo.create(ai_message)
 
+        dice_result_response = None
+        if parsed:
+            dice_result_response = DiceResultResponse(
+                roll=dice_result.roll,
+                modifier=dice_result.modifier,
+                total=dice_result.total,
+                dc=dice_result.dc,
+                is_success=dice_result.is_success,
+                is_critical=dice_result.is_critical,
+                is_fumble=dice_result.is_fumble,
+                check_type=dice_result.check_type.value,
+                damage=dice_result.damage,
+                display_text=dice_result.display_text,
+            )
+
         response = GameActionResponse(
             message=GameMessageResponse(
                 id=ai_message.id,
@@ -400,6 +451,7 @@ class ProcessActionUseCase:
             max_turns=session.max_turns,
             is_ending=session.remaining_turns <= 1,
             image_url=image_url,
+            dice_result=dice_result_response,
         )
 
         return session, response
@@ -471,6 +523,48 @@ class ProcessActionUseCase:
         )
 
         return session, response
+
+    async def _handle_death_ending(
+        self,
+        session: GameSessionEntity,
+        character: CharacterEntity,
+        narrative: str,
+        recent_messages: list[GameMessageEntity],
+    ) -> GameActionResponse:
+        death_narrative = (
+            f"{narrative}\n\n"
+            f"💀 {character.name}의 HP가 0이 되어 사망했습니다. "
+            f"게임 오버."
+        )
+
+        ending_message = GameMessageEntity(
+            id=get_uuid7(),
+            session_id=session.id,
+            role=MessageRole.ASSISTANT,
+            content=death_narrative,
+            parsed_response={"ending_type": "defeat"},
+            created_at=get_utc_datetime(),
+        )
+        await self._message_repo.create(ending_message)
+
+        return GameActionResponse(
+            message=GameMessageResponse(
+                id=ending_message.id,
+                role=ending_message.role.value,
+                content=ending_message.content,
+                parsed_response=None,
+                image_url=None,
+                created_at=ending_message.created_at,
+            ),
+            narrative=death_narrative,
+            options=["게임 종료"],
+            turn_count=session.turn_count,
+            max_turns=session.max_turns,
+            is_ending=True,
+            state_changes=None,
+            image_url=None,
+            dice_result=None,
+        )
 
     async def _check_idempotency(
         self, session_id: UUID, idempotency_key: str
