@@ -1,5 +1,6 @@
 """Game Domain Value Objects - Enums for type safety."""
 
+from .dice import DiceCheckType, DiceResult
 from .ending_type import EndingType
 from .game_state import GameState, StateChanges
 from .message_role import MessageRole
@@ -15,4 +16,6 @@ __all__ = [
     "ScenarioGenre",
     "GameState",
     "StateChanges",
+    "DiceCheckType",
+    "DiceResult",
 ]
