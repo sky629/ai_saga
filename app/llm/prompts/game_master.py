@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from app.game.domain.value_objects import GameState
+    from app.game.domain.value_objects import DiceResult, GameState
 
 SYSTEM_PROMPT_TEMPLATE = """당신은 텍스트 기반 MUD 게임의 게임 마스터(Game Master)입니다.
 
@@ -23,6 +23,9 @@ SYSTEM_PROMPT_TEMPLATE = """당신은 텍스트 기반 MUD 게임의 게임 마�
 - 위치: {current_location}
 {game_state_section}
 
+## 주사위 판정 결과
+{dice_result_section}
+
 ## 당신의 역할
 1. 플레이어의 행동에 대해 생생하고 몰입감 있는 서술을 제공합니다.
 2. 세계관에 맞는 일관된 반응을 생성합니다.
@@ -33,6 +36,12 @@ SYSTEM_PROMPT_TEMPLATE = """당신은 텍스트 기반 MUD 게임의 게임 마�
 - 응답은 한국어로 작성합니다.
 - 2인칭 시점("당신은...")으로 서술합니다.
 - 플레이어에게 2-3개의 선택지를 제안합니다.
+- 주사위 판정 결과가 있는 경우, 결과에 따라 서술해야 합니다.
+  - 성공 판정 시: 플레이어의 행동이 성공하는 서술
+  - 실패 판정 시: 플레이어의 행동이 실패하는 서술
+  - 크리티컬(대성공) 시: 극적으로 성공하는 서술
+  - 펌블(대실패) 시: 상황이 악화되는 서술
+  - **주사위 판정 결과는 절대적입니다. 판정 결과를 절대 뒤집지 마세요.**
 - 응답은 다음 JSON 형식을 따릅니다:
 
 ```json
@@ -65,6 +74,18 @@ ACTION_PROMPT_TEMPLATE = """## 현재 상황
 """
 
 
+def build_dice_result_section(dice_result: "DiceResult") -> str:
+    """Format dice result for inclusion in prompt.
+
+    Args:
+        dice_result: The dice result to format.
+
+    Returns:
+        Formatted dice result string for the prompt.
+    """
+    return dice_result.display_text
+
+
 def build_system_prompt(
     scenario_name: str,
     world_setting: str,
@@ -72,6 +93,7 @@ def build_system_prompt(
     character_description: str,
     current_location: str = "",
     game_state_section: str = "",
+    dice_result_section: str = "",
 ) -> str:
     """Build the system prompt for the game master.
 
@@ -82,6 +104,7 @@ def build_system_prompt(
         character_description: Description of the character.
         current_location: Current location in the game.
         game_state_section: Formatted game state information.
+        dice_result_section: Formatted dice result information.
 
     Returns:
         Formatted system prompt string.
@@ -93,6 +116,7 @@ def build_system_prompt(
         character_description=character_description,
         current_location=current_location,
         game_state_section=game_state_section,
+        dice_result_section=dice_result_section,
     )
 
 
@@ -141,6 +165,7 @@ class GameMasterPrompt:
     recent_events: str = ""
     inventory: list[str] = field(default_factory=list)
     game_state: Optional["GameState"] = None
+    dice_result_section: str = ""
 
     @property
     def system_prompt(self) -> str:
@@ -156,6 +181,7 @@ class GameMasterPrompt:
             character_description=self.character_description,
             current_location=self.current_location,
             game_state_section=game_state_section,
+            dice_result_section=self.dice_result_section,
         )
 
     def _format_game_state(self) -> str:
