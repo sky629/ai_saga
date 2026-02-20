@@ -126,6 +126,7 @@ class GameContainer:
             session_repository=self.session_repository(),
             message_repository=self.message_repository(),
             character_repository=self.character_repository(),
+            scenario_repository=self.scenario_repository(),
             llm_service=self.llm_service,
             cache_service=self.cache_service,
             image_service=self.image_service,

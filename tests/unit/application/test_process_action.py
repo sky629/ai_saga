@@ -58,6 +58,7 @@ class TestProcessActionOnCompletedSession:
 
         message_repo = AsyncMock()
         character_repo = AsyncMock()
+        scenario_repo = AsyncMock()
         llm_service = AsyncMock()
         cache_service = AsyncMock()
         cache_service.get.return_value = None  # No cached response
@@ -71,6 +72,7 @@ class TestProcessActionOnCompletedSession:
             "session_repo": session_repo,
             "message_repo": message_repo,
             "character_repo": character_repo,
+            "scenario_repo": scenario_repo,
             "llm_service": llm_service,
             "cache_service": cache_service,
             "embedding_service": embedding_service,
@@ -83,6 +85,7 @@ class TestProcessActionOnCompletedSession:
             session_repository=mock_repositories["session_repo"],
             message_repository=mock_repositories["message_repo"],
             character_repository=mock_repositories["character_repo"],
+            scenario_repository=mock_repositories["scenario_repo"],
             llm_service=mock_repositories["llm_service"],
             cache_service=mock_repositories["cache_service"],
             embedding_service=mock_repositories["embedding_service"],
@@ -177,6 +180,7 @@ class TestImageGenerationFlag:
         message_repo.get_similar_messages.return_value = []
 
         character_repo = AsyncMock()
+        scenario_repo = AsyncMock()
 
         llm_service = AsyncMock()
         llm_service.generate_response.return_value = AsyncMock(
@@ -199,6 +203,7 @@ class TestImageGenerationFlag:
             "session_repo": session_repo,
             "message_repo": message_repo,
             "character_repo": character_repo,
+            "scenario_repo": scenario_repo,
             "llm_service": llm_service,
             "cache_service": cache_service,
             "embedding_service": embedding_service,
@@ -214,6 +219,7 @@ class TestImageGenerationFlag:
             character_repository=mock_repositories_with_image[
                 "character_repo"
             ],
+            scenario_repository=mock_repositories_with_image["scenario_repo"],
             llm_service=mock_repositories_with_image["llm_service"],
             cache_service=mock_repositories_with_image["cache_service"],
             embedding_service=mock_repositories_with_image[
@@ -390,6 +396,8 @@ class TestGameEndingDetection:
         character_mock.name = "테스트 캐릭터"
         character_repo.get_by_id.return_value = character_mock
 
+        scenario_repo = AsyncMock()
+
         llm_service = AsyncMock()
         llm_service.generate_response.return_value = AsyncMock(
             content="You continue your journey.",
@@ -406,6 +414,7 @@ class TestGameEndingDetection:
             "session_repo": session_repo,
             "message_repo": message_repo,
             "character_repo": character_repo,
+            "scenario_repo": scenario_repo,
             "llm_service": llm_service,
             "cache_service": cache_service,
             "embedding_service": embedding_service,
@@ -416,6 +425,7 @@ class TestGameEndingDetection:
             session_repository=repos["session_repo"],
             message_repository=repos["message_repo"],
             character_repository=repos["character_repo"],
+            scenario_repository=repos["scenario_repo"],
             llm_service=repos["llm_service"],
             cache_service=repos["cache_service"],
             embedding_service=repos["embedding_service"],
@@ -546,3 +556,185 @@ def test_game_ending_response_is_ending_default_true():
     )
 
     assert response.is_ending is True
+
+
+@pytest.mark.asyncio
+class TestScenarioLoading:
+    """Test scenario loading in ProcessActionUseCase."""
+
+    @pytest.fixture
+    def active_session(self):
+        """Create an active game session entity."""
+        session_id = uuid4()
+        user_id = uuid4()
+        character_id = uuid4()
+        scenario_id = uuid4()
+        now = datetime.now(timezone.utc)
+
+        session = GameSessionEntity(
+            id=session_id,
+            user_id=user_id,
+            character_id=character_id,
+            scenario_id=scenario_id,
+            current_location="Forest",
+            game_state={},
+            status=SessionStatus.ACTIVE,
+            turn_count=0,
+            max_turns=10,
+            ending_type=None,
+            started_at=now,
+            last_activity_at=now,
+        )
+        return session
+
+    @pytest.fixture
+    def mock_scenario(self):
+        """Create a mock scenario entity."""
+        from app.game.domain.entities import ScenarioEntity
+        from app.game.domain.value_objects import (
+            ScenarioDifficulty,
+            ScenarioGenre,
+        )
+
+        return ScenarioEntity(
+            id=uuid4(),
+            name="던전 탐험",
+            description="어두운 던전을 탐험하는 모험",
+            world_setting="중세 판타지 세계",
+            initial_location="던전 입구",
+            genre=ScenarioGenre.FANTASY,
+            difficulty=ScenarioDifficulty.NORMAL,
+            max_turns=30,
+            is_active=True,
+            created_at=datetime.now(timezone.utc),
+        )
+
+    @pytest.fixture
+    def mock_repositories(self, active_session, mock_scenario):
+        """Create mocked repositories with scenario."""
+        session_repo = AsyncMock()
+        session_repo.get_by_id.return_value = active_session
+
+        message_repo = AsyncMock()
+        message_repo.get_recent_messages.return_value = []
+        message_repo.get_similar_messages.return_value = []
+
+        character_repo = AsyncMock()
+
+        scenario_repo = AsyncMock()
+        scenario_repo.get_by_id.return_value = mock_scenario
+
+        llm_service = AsyncMock()
+        llm_service.generate_response.return_value = AsyncMock(
+            content="You enter the dungeon.",
+            usage=AsyncMock(total_tokens=50),
+        )
+
+        cache_service = AsyncMock()
+        cache_service.get.return_value = None
+
+        embedding_service = AsyncMock()
+        embedding_service.generate_embedding.return_value = [0.1] * 768
+
+        return {
+            "session_repo": session_repo,
+            "message_repo": message_repo,
+            "character_repo": character_repo,
+            "scenario_repo": scenario_repo,
+            "llm_service": llm_service,
+            "cache_service": cache_service,
+            "embedding_service": embedding_service,
+        }
+
+    @pytest.fixture
+    def use_case(self, mock_repositories):
+        """Create ProcessActionUseCase with mocked dependencies."""
+        return ProcessActionUseCase(
+            session_repository=mock_repositories["session_repo"],
+            message_repository=mock_repositories["message_repo"],
+            character_repository=mock_repositories["character_repo"],
+            scenario_repository=mock_repositories["scenario_repo"],
+            llm_service=mock_repositories["llm_service"],
+            cache_service=mock_repositories["cache_service"],
+            embedding_service=mock_repositories["embedding_service"],
+        )
+
+    @patch("config.settings.settings")
+    async def test_scenario_loaded_in_normal_turn(
+        self, mock_settings, use_case, active_session, mock_repositories
+    ):
+        """시나리오가 _handle_normal_turn에서 로드되는지 확인."""
+        mock_settings.image_generation_enabled = False
+
+        input_data = ProcessActionInput(
+            session_id=active_session.id,
+            action="북쪽으로 이동",
+            idempotency_key="scenario-load-key",
+        )
+
+        await use_case.execute(active_session.user_id, input_data)
+
+        mock_repositories["scenario_repo"].get_by_id.assert_called_once_with(
+            active_session.scenario_id
+        )
+
+    @patch("config.settings.settings")
+    async def test_scenario_name_passed_to_prompt(
+        self, mock_settings, use_case, active_session, mock_repositories
+    ):
+        """시나리오 이름이 GameMasterPrompt에 전달되는지 확인."""
+        mock_settings.image_generation_enabled = False
+
+        input_data = ProcessActionInput(
+            session_id=active_session.id,
+            action="북쪽으로 이동",
+            idempotency_key="scenario-name-key",
+        )
+
+        await use_case.execute(active_session.user_id, input_data)
+
+        llm_call_args = mock_repositories[
+            "llm_service"
+        ].generate_response.call_args
+        system_prompt = llm_call_args[1]["system_prompt"]
+
+        assert "던전 탐험" in system_prompt
+
+    @patch("config.settings.settings")
+    async def test_scenario_world_setting_passed_to_prompt(
+        self, mock_settings, use_case, active_session, mock_repositories
+    ):
+        """시나리오 world_setting이 GameMasterPrompt에 전달되는지 확인."""
+        mock_settings.image_generation_enabled = False
+
+        input_data = ProcessActionInput(
+            session_id=active_session.id,
+            action="북쪽으로 이동",
+            idempotency_key="world-setting-key",
+        )
+
+        await use_case.execute(active_session.user_id, input_data)
+
+        llm_call_args = mock_repositories[
+            "llm_service"
+        ].generate_response.call_args
+        system_prompt = llm_call_args[1]["system_prompt"]
+
+        assert "중세 판타지 세계" in system_prompt
+
+    @patch("config.settings.settings")
+    async def test_scenario_not_found_raises_error(
+        self, mock_settings, use_case, active_session, mock_repositories
+    ):
+        """시나리오를 찾을 수 없으면 ValueError 발생."""
+        mock_settings.image_generation_enabled = False
+        mock_repositories["scenario_repo"].get_by_id.return_value = None
+
+        input_data = ProcessActionInput(
+            session_id=active_session.id,
+            action="북쪽으로 이동",
+            idempotency_key="scenario-not-found-key",
+        )
+
+        with pytest.raises(ValueError, match="Scenario .* not found"):
+            await use_case.execute(active_session.user_id, input_data)

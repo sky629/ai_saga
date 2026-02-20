@@ -19,6 +19,7 @@ from app.game.application.ports import (
     GameSessionRepositoryInterface,
     ImageGenerationServiceInterface,
     LLMServiceInterface,
+    ScenarioRepositoryInterface,
 )
 from app.game.domain.entities import GameMessageEntity, GameSessionEntity
 from app.game.domain.services import GameMasterService
@@ -61,6 +62,7 @@ class ProcessActionUseCase:
         session_repository: GameSessionRepositoryInterface,
         message_repository: GameMessageRepositoryInterface,
         character_repository: CharacterRepositoryInterface,
+        scenario_repository: ScenarioRepositoryInterface,
         llm_service: LLMServiceInterface,
         cache_service: CacheServiceInterface,
         embedding_service: EmbeddingServiceInterface,
@@ -69,6 +71,7 @@ class ProcessActionUseCase:
         self._session_repo = session_repository
         self._message_repo = message_repository
         self._character_repo = character_repository
+        self._scenario_repo = scenario_repository
         self._llm = llm_service
         self._cache = cache_service
         self._embedding = embedding_service
@@ -203,9 +206,14 @@ class ProcessActionUseCase:
         # Parse current game state
         game_state = GameState.from_dict(session.game_state)
 
+        # Load scenario for difficulty context
+        scenario = await self._scenario_repo.get_by_id(session.scenario_id)
+        if not scenario:
+            raise ValueError(f"Scenario {session.scenario_id} not found")
+
         prompt = GameMasterPrompt(
-            scenario_name="",  # TODO: Load from session
-            world_setting="",
+            scenario_name=scenario.name,
+            world_setting=scenario.world_setting,
             character_name="",
             character_description="",
             current_location=session.current_location,

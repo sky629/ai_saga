@@ -24,6 +24,7 @@ def mock_repositories():
         "session_repository": AsyncMock(),
         "character_repository": AsyncMock(),
         "message_repository": AsyncMock(),
+        "scenario_repository": AsyncMock(),
         "cache_service": AsyncMock(),
         "embedding_service": AsyncMock(),
     }
@@ -112,6 +113,7 @@ async def test_process_action_with_experience_gain(
         session_repository=mock_repositories["session_repository"],
         character_repository=mock_repositories["character_repository"],
         message_repository=mock_repositories["message_repository"],
+        scenario_repository=mock_repositories["scenario_repository"],
         llm_service=mock_llm_service,
         cache_service=mock_repositories["cache_service"],
         embedding_service=mock_repositories["embedding_service"],
@@ -180,6 +182,7 @@ async def test_process_action_with_level_up(
         session_repository=mock_repositories["session_repository"],
         character_repository=mock_repositories["character_repository"],
         message_repository=mock_repositories["message_repository"],
+        scenario_repository=mock_repositories["scenario_repository"],
         llm_service=mock_llm_service,
         cache_service=mock_repositories["cache_service"],
         embedding_service=mock_repositories["embedding_service"],
