@@ -195,6 +195,13 @@ class ProcessActionUseCase:
         if not session.is_active:
             raise ValueError("Session is not in active state")
 
+        # Check if session has reached max turns
+        if session.is_final_turn:
+            raise ValueError(
+                f"Session has reached maximum turns ({session.max_turns}). "
+                "Cannot process further actions."
+            )
+
     async def _handle_normal_turn(
         self,
         session: GameSessionEntity,
@@ -257,13 +264,23 @@ class ProcessActionUseCase:
         parsed = GameMasterService.parse_llm_response(llm_response.content)
         logger.info(f"[DEBUG] LLM response parsed: {parsed is not None}")
 
+        dice_applied = False
         if parsed:
             # Extract structured data
             narrative = GameMasterService.extract_narrative_from_parsed(
                 parsed, llm_response.content
             )
             options = GameMasterService.extract_options_from_parsed(parsed)
+            dice_applied = GameMasterService.extract_dice_applied(parsed)
             state_changes = GameMasterService.extract_state_changes(parsed)
+
+            # Filter state_changes if dice check failed
+            if dice_applied and not dice_result.is_success:
+                state_changes = (
+                    GameMasterService.filter_state_changes_on_dice_failure(
+                        state_changes
+                    )
+                )
 
             # Update session state
             session = session.update_game_state(state_changes)
@@ -343,11 +360,9 @@ class ProcessActionUseCase:
                         f"[DEBUG] Character after update: hp={character.stats.hp}, inventory={character.inventory}"
                     )
                     try:
-                        saved_character = await self._character_repo.save(
-                            character
-                        )
+                        await self._character_repo.save(character)
                         logger.info(
-                            f"[DEBUG] Character saved successfully: hp={saved_character.stats.hp}, inventory={saved_character.inventory}"
+                            f"[DEBUG] Character saved successfully: hp={character.stats.hp}, inventory={character.inventory}"
                         )
                     except Exception as e:
                         logger.error(
@@ -355,19 +370,29 @@ class ProcessActionUseCase:
                         )
                         raise
 
-                    if dice_result.is_fumble and dice_result.damage:
-                        character = character.update_stats(
-                            character.stats.take_damage(dice_result.damage)
-                        )
-                        character = await self._character_repo.save(character)
+            if dice_applied and dice_result.is_fumble and dice_result.damage:
+                character = await self._character_repo.get_by_id(
+                    session.character_id
+                )
+                if character:
+                    character = character.update_stats(
+                        character.stats.take_damage(dice_result.damage)
+                    )
+                    await self._character_repo.save(character)
 
-                    if GameMasterService.should_end_game_by_death(character):
-                        session = session.complete(EndingType.DEFEAT)
-                        await self._session_repo.save(session)
-                        ending_response = await self._handle_death_ending(
-                            session, character, narrative, recent_messages
-                        )
-                        return session, ending_response
+            if dice_applied:
+                character = await self._character_repo.get_by_id(
+                    session.character_id
+                )
+                if character and GameMasterService.should_end_game_by_death(
+                    character
+                ):
+                    session = session.complete(EndingType.DEFEAT)
+                    await self._session_repo.save(session)
+                    ending_response = await self._handle_death_ending(
+                        session, character, narrative, recent_messages
+                    )
+                    return session, ending_response
         else:
             # Fallback to text parsing if JSON parsing fails
             import logging
@@ -422,7 +447,7 @@ class ProcessActionUseCase:
         await self._message_repo.create(ai_message)
 
         dice_result_response = None
-        if parsed:
+        if parsed and dice_applied:
             dice_result_response = DiceResultResponse(
                 roll=dice_result.roll,
                 modifier=dice_result.modifier,

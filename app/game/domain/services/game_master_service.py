@@ -178,3 +178,38 @@ class GameMasterService:
             옵션 목록
         """
         return parsed.get("options", [])
+
+    @staticmethod
+    def extract_dice_applied(parsed: dict) -> bool:
+        """파싱된 JSON에서 dice_applied 추출.
+
+        Args:
+            parsed: 파싱된 JSON 딕셔너리
+
+        Returns:
+            주사위 적용 여부 (기본값: False)
+        """
+        return parsed.get("dice_applied", False)
+
+    @staticmethod
+    def filter_state_changes_on_dice_failure(
+        state_changes: StateChanges,
+    ) -> StateChanges:
+        """주사위 실패 시 state_changes 필터링.
+
+        실패 시 location(위치 이동)과 items_gained(아이템 획득)을 차단합니다.
+        hp_change, items_lost, experience_gained, npcs_met, discoveries는
+        유지합니다.
+
+        Args:
+            state_changes: 원본 StateChanges
+
+        Returns:
+            필터링된 새 StateChanges 인스턴스
+        """
+        return state_changes.model_copy(
+            update={
+                "location": None,
+                "items_gained": [],
+            }
+        )

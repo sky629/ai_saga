@@ -124,7 +124,7 @@ class TestDiceIntegration:
 
         # Mock LLM response
         mock_llm_response = MagicMock()
-        mock_llm_response.content = '{"narrative": "Test narrative", "options": ["Option 1"], "state_changes": {"hp_change": 0}}'
+        mock_llm_response.content = '{"narrative": "Fumble!", "options": ["Option 1"], "dice_applied": true, "state_changes": {"hp_change": 0}}'
         mock_llm_response.usage.total_tokens = 100
         mock_repositories["llm_service"].generate_response.return_value = (
             mock_llm_response
@@ -173,7 +173,7 @@ class TestDiceIntegration:
         ].generate_embedding.return_value = [0.1, 0.2, 0.3]
 
         mock_llm_response = MagicMock()
-        mock_llm_response.content = '{"narrative": "Critical!", "options": ["Option 1"], "state_changes": {"hp_change": 0}}'
+        mock_llm_response.content = '{"narrative": "Critical!", "options": ["Option 1"], "dice_applied": true, "state_changes": {"hp_change": 0}}'
         mock_llm_response.usage.total_tokens = 100
         mock_repositories["llm_service"].generate_response.return_value = (
             mock_llm_response
@@ -217,7 +217,7 @@ class TestDiceIntegration:
         ].generate_embedding.return_value = [0.1, 0.2, 0.3]
 
         mock_llm_response = MagicMock()
-        mock_llm_response.content = '{"narrative": "Fumble!", "options": ["Option 1"], "state_changes": {"hp_change": 0}}'
+        mock_llm_response.content = '{"narrative": "Fumble!", "options": ["Option 1"], "dice_applied": true, "state_changes": {"hp_change": 0}}'
         mock_llm_response.usage.total_tokens = 100
         mock_repositories["llm_service"].generate_response.return_value = (
             mock_llm_response
@@ -274,8 +274,23 @@ class TestDiceIntegration:
         mock_repositories["session_repository"].get_by_id.return_value = (
             active_session
         )
-        mock_repositories["character_repository"].get_by_id.return_value = (
-            low_hp_character
+
+        # Track character state across multiple get_by_id calls
+        current_character = low_hp_character
+
+        async def get_character_by_id(char_id):
+            return current_character
+
+        async def save_character(char):
+            nonlocal current_character
+            current_character = char
+            return char
+
+        mock_repositories["character_repository"].get_by_id.side_effect = (
+            get_character_by_id
+        )
+        mock_repositories["character_repository"].save.side_effect = (
+            save_character
         )
         mock_repositories["scenario_repository"].get_by_id.return_value = (
             scenario
@@ -285,7 +300,7 @@ class TestDiceIntegration:
         ].generate_embedding.return_value = [0.1, 0.2, 0.3]
 
         mock_llm_response = MagicMock()
-        mock_llm_response.content = '{"narrative": "Fumble!", "options": ["Option 1"], "state_changes": {"hp_change": 0}}'
+        mock_llm_response.content = '{"narrative": "Fumble!", "options": ["Option 1"], "dice_applied": true, "state_changes": {"hp_change": 0}}'
         mock_llm_response.usage.total_tokens = 100
         mock_repositories["llm_service"].generate_response.return_value = (
             mock_llm_response

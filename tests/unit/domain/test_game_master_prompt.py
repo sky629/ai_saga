@@ -143,9 +143,43 @@ class TestBuildSystemPrompt:
         )
         assert "## 주사위 판정 결과" in prompt
 
+    def test_system_prompt_contains_dice_applied_in_json_format(self):
+        """Test system prompt JSON format includes dice_applied field."""
+        prompt = build_system_prompt(
+            scenario_name="test",
+            world_setting="test",
+            character_name="test",
+            character_description="test",
+        )
+        assert "dice_applied" in prompt
+
 
 class TestGameMasterPrompt:
     """Tests for GameMasterPrompt dataclass."""
+
+    def test_action_prompt_contains_dice_result(self):
+        """Test action prompt includes dice result section when provided."""
+        from app.llm.prompts.game_master import build_action_prompt
+
+        result = build_action_prompt(
+            player_action="건물 밖으로 나간다",
+            character_name="용사",
+            current_location="건물 안",
+            dice_result_section="🎲 1d20+2 = 8 vs DC 12 → 실패...",
+        )
+        assert "🎲 1d20+2 = 8 vs DC 12 → 실패..." in result
+
+    def test_action_prompt_without_dice_result(self):
+        """Test action prompt handles missing dice result gracefully."""
+        from app.llm.prompts.game_master import build_action_prompt
+
+        result = build_action_prompt(
+            player_action="대화한다",
+            character_name="용사",
+            current_location="마을",
+        )
+        assert "용사" in result
+        assert "대화한다" in result
 
     def test_game_master_prompt_creation(self):
         """Test GameMasterPrompt can be created with basic fields."""

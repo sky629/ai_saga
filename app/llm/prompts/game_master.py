@@ -42,12 +42,17 @@ SYSTEM_PROMPT_TEMPLATE = """당신은 텍스트 기반 MUD 게임의 게임 마�
   - 크리티컬(대성공) 시: 극적으로 성공하는 서술
   - 펌블(대실패) 시: 상황이 악화되는 서술
   - **주사위 판정 결과는 절대적입니다. 판정 결과를 절대 뒤집지 마세요.**
+- dice_applied는 이 행동에 주사위 판정이 적용되는지 나타냅니다.
+  - 전투, 위험한 행동, 기술 사용, 잠입, 탈출 등 불확실한 행동 → dice_applied: true
+  - 단순 이동, 대화, 관찰, 휴식 등 일상적 행동 → dice_applied: false
+  - dice_applied가 true인 경우, 반드시 위 주사위 판정 결과에 따라 서술하세요.
 - 응답은 다음 JSON 형식을 따릅니다:
 
 ```json
 {{
   "narrative": "상황 서술 텍스트",
   "options": ["선택지1", "선택지2", "선택지3"],
+  "dice_applied": false,
   "state_changes": {{
     "hp_change": 0,
     "items_gained": [],
@@ -67,10 +72,13 @@ ACTION_PROMPT_TEMPLATE = """## 현재 상황
 - 위치: {current_location}
 {inventory_section}
 
+## 주사위 판정
+{dice_result_section}
+
 ## 플레이어 행동
 {player_action}
 
-위 행동에 대한 게임 마스터 응답을 생성해주세요.
+위 행동에 대한 게임 마스터 응답을 생성해주세요. 주사위 판정 결과가 있다면 반드시 결과에 따라 서술하세요.
 """
 
 
@@ -125,6 +133,7 @@ def build_action_prompt(
     character_name: str,
     current_location: str,
     inventory: Optional[list[str]] = None,
+    dice_result_section: str = "",
 ) -> str:
     """Build the action prompt for player actions.
 
@@ -133,6 +142,7 @@ def build_action_prompt(
         character_name: Name of the player's character.
         current_location: Current location in the game world.
         inventory: Optional list of items the character has.
+        dice_result_section: Optional dice result information.
 
     Returns:
         Formatted action prompt string.
@@ -147,6 +157,7 @@ def build_action_prompt(
         current_location=current_location,
         inventory_section=inventory_section,
         player_action=player_action,
+        dice_result_section=dice_result_section,
     )
 
 
@@ -210,11 +221,14 @@ class GameMasterPrompt:
 
         return "\n".join(lines) if lines else "- (아직 수집한 정보 없음)"
 
-    def build_action(self, player_action: str) -> str:
+    def build_action(
+        self, player_action: str, dice_result_section: str = ""
+    ) -> str:
         """Build action prompt for a specific player action."""
         return build_action_prompt(
             player_action=player_action,
             character_name=self.character_name,
             current_location=self.current_location,
             inventory=self.inventory,
+            dice_result_section=dice_result_section,
         )

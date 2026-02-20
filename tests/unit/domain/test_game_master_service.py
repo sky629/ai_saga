@@ -212,6 +212,86 @@ Some extra text here"""
         assert result == []
 
 
+class TestGameMasterServiceDiceFiltering:
+    """GameMasterService dice_applied extraction and state_changes filtering tests."""
+
+    def test_extract_dice_applied_true(self):
+        """dice_applied=true인 경우 True 반환."""
+        parsed = {"dice_applied": True, "narrative": "Test"}
+        result = GameMasterService.extract_dice_applied(parsed)
+        assert result is True
+
+    def test_extract_dice_applied_false(self):
+        """dice_applied=false인 경우 False 반환."""
+        parsed = {"dice_applied": False, "narrative": "Test"}
+        result = GameMasterService.extract_dice_applied(parsed)
+        assert result is False
+
+    def test_extract_dice_applied_missing(self):
+        """dice_applied 필드 없으면 False 반환 (safe default)."""
+        parsed = {"narrative": "Test"}
+        result = GameMasterService.extract_dice_applied(parsed)
+        assert result is False
+
+    def test_filter_state_changes_on_failure_blocks_location(self):
+        """실패 시 location을 None으로 필터링."""
+        changes = StateChanges(
+            hp_change=-5,
+            location="outside",
+            items_gained=["sword"],
+            items_lost=["torch"],
+        )
+        filtered = GameMasterService.filter_state_changes_on_dice_failure(
+            changes
+        )
+        assert filtered.location is None
+
+    def test_filter_state_changes_on_failure_blocks_items_gained(self):
+        """실패 시 items_gained를 빈 리스트로 필터링."""
+        changes = StateChanges(
+            items_gained=["sword", "potion"],
+            location="cave",
+        )
+        filtered = GameMasterService.filter_state_changes_on_dice_failure(
+            changes
+        )
+        assert filtered.items_gained == []
+
+    def test_filter_state_changes_on_failure_preserves_hp_change(self):
+        """실패 시 hp_change는 유지."""
+        changes = StateChanges(hp_change=-10, location="outside")
+        filtered = GameMasterService.filter_state_changes_on_dice_failure(
+            changes
+        )
+        assert filtered.hp_change == -10
+
+    def test_filter_state_changes_on_failure_preserves_items_lost(self):
+        """실패 시 items_lost는 유지."""
+        changes = StateChanges(items_lost=["torch"], location="outside")
+        filtered = GameMasterService.filter_state_changes_on_dice_failure(
+            changes
+        )
+        assert filtered.items_lost == ["torch"]
+
+    def test_filter_preserves_experience_and_discoveries(self):
+        """실패 시 experience_gained, npcs_met, discoveries 유지."""
+        changes = StateChanges(
+            experience_gained=50,
+            npcs_met=["wizard"],
+            discoveries=["secret"],
+            location="dungeon",
+            items_gained=["key"],
+        )
+        filtered = GameMasterService.filter_state_changes_on_dice_failure(
+            changes
+        )
+        assert filtered.experience_gained == 50
+        assert filtered.npcs_met == ["wizard"]
+        assert filtered.discoveries == ["secret"]
+        assert filtered.location is None
+        assert filtered.items_gained == []
+
+
 class TestGameMasterServiceDeathCheck:
     """GameMasterService death check tests."""
 
