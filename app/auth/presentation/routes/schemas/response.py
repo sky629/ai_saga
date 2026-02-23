@@ -16,6 +16,9 @@ class UserResponse(BaseModel):
     email: str
     name: str
     user_level: int
+    game_level: int = 1
+    game_experience: int = 0
+    game_current_experience: int = 0
     profile_image_url: Optional[str] = None
     is_active: bool
     email_verified: bool
@@ -75,6 +78,9 @@ class UserWithSocialAccountsResponse(BaseModel):
     email: str
     name: str
     user_level: int
+    game_level: int = 1
+    game_experience: int = 0
+    game_current_experience: int = 0
     profile_image_url: Optional[str] = None
     is_active: bool
     email_verified: bool

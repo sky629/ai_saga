@@ -46,11 +46,12 @@ SYSTEM_PROMPT_TEMPLATE = """당신은 텍스트 기반 MUD 게임의 게임 마�
   - 전투, 위험한 행동, 기술 사용, 잠입, 탈출 등 불확실한 행동 → dice_applied: true
   - 단순 이동, 대화, 관찰, 휴식 등 일상적 행동 → dice_applied: false
   - dice_applied가 true인 경우, 반드시 위 주사위 판정 결과에 따라 서술하세요.
-- 응답은 다음 JSON 형식을 따릅니다:
+ 응답은 다음 JSON 형식을 따릅니다:
 
 ```json
 {{
-  "narrative": "상황 서술 텍스트",
+  "before_narrative": "주사위를 굴리기 전의 준비 상황 묘사 (dice_applied가 true일 때만)",
+  "narrative": "주사위 결과를 반영한 최종 상황 서술 텍스트",
   "options": ["선택지1", "선택지2", "선택지3"],
   "dice_applied": false,
   "state_changes": {{
@@ -64,6 +65,13 @@ SYSTEM_PROMPT_TEMPLATE = """당신은 텍스트 기반 MUD 게임의 게임 마�
 }}
 ```
 
+### before_narrative와 narrative 작성 규칙:
+- **dice_applied가 true인 경우**:
+  - `before_narrative`: 주사위를 굴리기 직전의 긴장감 있는 상황 묘사. 행동을 시도하려는 순간을 묘사합니다. (예: "당신은 검을 들어올리며 고블린을 향해 돌진합니다...")
+  - `narrative`: 주사위 판정 결과를 반영한 행동의 결과 서술. (예: "날카로운 검격이 고블린의 방패를 뚫고 치명상을 입혔습니다!")
+- **dice_applied가 false인 경우**:
+  - `before_narrative`: 생략 (포함하지 마세요)
+  - `narrative`: 일반적인 상황 서술을 작성합니다.
 **중요**: state_changes는 변경사항만 포함합니다. 예를 들어 location은 새로운 장소로 이동할 때만 명시하고, 같은 장소에 머무를 때는 생략합니다.
 """
 

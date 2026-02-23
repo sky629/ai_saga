@@ -150,6 +150,7 @@ class GameActionResponse(BaseModel):
 
     message: GameMessageResponse
     narrative: str
+    before_roll_narrative: Optional[str] = None
     options: list[str]
     turn_count: int
     max_turns: int
@@ -157,6 +158,9 @@ class GameActionResponse(BaseModel):
     state_changes: Optional[dict] = None
     image_url: Optional[str] = None  # 삽화 이미지 URL
     dice_result: Optional[DiceResultResponse] = None
+    xp_gained: Optional[int] = None
+    leveled_up: Optional[bool] = None
+    new_game_level: Optional[int] = None
 
 
 class GameEndingResponse(BaseModel):
@@ -169,6 +173,10 @@ class GameEndingResponse(BaseModel):
     character_name: str
     scenario_name: str
     is_ending: bool = True
+    xp_gained: int = 0
+    new_game_level: int = 1
+    leveled_up: bool = False
+    levels_gained: int = 0
 
 
 class MessageResponse(BaseModel):

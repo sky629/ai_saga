@@ -4,8 +4,11 @@
 ProcessActionUseCase에서 분리된 독립적인 엔딩 처리 로직.
 """
 
+import logging
+from typing import Optional
 from uuid import UUID
 
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel
 
 from app.common.utils.datetime import get_utc_datetime
@@ -14,10 +17,15 @@ from app.game.application.ports import (
     GameMessageRepositoryInterface,
     GameSessionRepositoryInterface,
     LLMServiceInterface,
+    UserProgressionInterface,
 )
 from app.game.domain.entities import GameMessageEntity, GameSessionEntity
-from app.game.domain.services import GameMasterService
-from app.game.domain.value_objects import MessageRole
+from app.game.domain.services import GameMasterService, UserProgressionService
+from app.game.domain.value_objects import (
+    EndingType,
+    MessageRole,
+    ScenarioDifficulty,
+)
 from app.game.presentation.routes.schemas.response import GameEndingResponse
 
 
@@ -42,10 +50,12 @@ class GenerateEndingUseCase:
         session_repository: GameSessionRepositoryInterface,
         message_repository: GameMessageRepositoryInterface,
         llm_service: LLMServiceInterface,
+        user_progression: Optional[UserProgressionInterface] = None,
     ):
         self._session_repo = session_repository
         self._message_repo = message_repository
         self._llm = llm_service
+        self._user_progression = user_progression
 
     async def execute(
         self, input_data: GenerateEndingInput
@@ -67,7 +77,7 @@ class GenerateEndingUseCase:
 
         # 4. Generate ending
         response = await self._generate_ending_narrative(
-            session, recent_messages
+            session, recent_messages, input_data.user_id
         )
 
         return response
@@ -76,6 +86,7 @@ class GenerateEndingUseCase:
         self,
         session: GameSessionEntity,
         recent_messages: list[GameMessageEntity],
+        user_id: Optional[UUID] = None,
     ) -> GameEndingResponse:
         """엔딩 내러티브 생성."""
         messages_for_llm = [
@@ -125,6 +136,26 @@ class GenerateEndingUseCase:
         )
         await self._message_repo.create(ending_message)
 
+        # XP 부여 처리 (Graceful degradation: 실패 시 로깅만)
+        xp_gained = 0
+        progression = None
+        if self._user_progression and user_id:
+            try:
+                xp_gained = UserProgressionService.calculate_game_xp(
+                    ending_type,
+                    completed_session.turn_count,
+                    ScenarioDifficulty.NORMAL,
+                )
+                progression = (
+                    await self._user_progression.award_game_experience(
+                        user_id, xp_gained
+                    )
+                )
+            except Exception as e:
+                logger.error(f"XP 부여 실패 (무시됨): {e}")
+                xp_gained = 0
+                progression = None
+
         return GameEndingResponse(
             session_id=session.id,
             ending_type=ending_type.value,
@@ -132,4 +163,8 @@ class GenerateEndingUseCase:
             total_turns=completed_session.turn_count,
             character_name="",  # TODO: Load from character
             scenario_name="",  # TODO: Load from scenario
+            xp_gained=xp_gained,
+            new_game_level=progression.game_level if progression else 1,
+            leveled_up=progression.leveled_up if progression else False,
+            levels_gained=progression.levels_gained if progression else 0,
         )

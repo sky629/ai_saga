@@ -5,6 +5,7 @@
 """
 
 import json
+import logging
 from typing import Optional, Union
 from uuid import UUID
 
@@ -20,15 +21,23 @@ from app.game.application.ports import (
     ImageGenerationServiceInterface,
     LLMServiceInterface,
     ScenarioRepositoryInterface,
+    UserProgressionInterface,
 )
 from app.game.domain.entities import (
     CharacterEntity,
     GameMessageEntity,
     GameSessionEntity,
 )
-from app.game.domain.services import DiceService, GameMasterService
+from app.game.domain.services import (
+    DiceService,
+    GameMasterService,
+    UserProgressionService,
+)
 from app.game.domain.value_objects import EndingType, GameState, MessageRole
 from app.game.domain.value_objects.dice import DiceCheckType
+from app.game.domain.value_objects.scenario_difficulty import (
+    ScenarioDifficulty,
+)
 from app.game.presentation.routes.schemas.response import (
     DiceResultResponse,
     GameActionResponse,
@@ -40,6 +49,8 @@ from app.llm.prompts.game_master import (
     GameMasterPrompt,
     build_dice_result_section,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ProcessActionInput(BaseModel):
@@ -76,6 +87,7 @@ class ProcessActionUseCase:
         cache_service: CacheServiceInterface,
         embedding_service: EmbeddingServiceInterface,
         image_service: Optional[ImageGenerationServiceInterface] = None,
+        user_progression: Optional[UserProgressionInterface] = None,
     ):
         self._session_repo = session_repository
         self._message_repo = message_repository
@@ -85,6 +97,7 @@ class ProcessActionUseCase:
         self._cache = cache_service
         self._embedding = embedding_service
         self._image_service = image_service
+        self._user_progression = user_progression
 
     async def execute(
         self, user_id: UUID, input_data: ProcessActionInput
@@ -159,7 +172,7 @@ class ProcessActionUseCase:
         # 8. Check if final turn (domain logic)
         if GameMasterService.should_end_game(session):
             session, response = await self._handle_ending(
-                session, all_context_messages
+                session, all_context_messages, user_id
             )
         else:
             session, response = await self._handle_normal_turn(
@@ -273,6 +286,9 @@ class ProcessActionUseCase:
             options = GameMasterService.extract_options_from_parsed(parsed)
             dice_applied = GameMasterService.extract_dice_applied(parsed)
             state_changes = GameMasterService.extract_state_changes(parsed)
+            before_narrative = (
+                GameMasterService.extract_before_narrative_from_parsed(parsed)
+            )
 
             # Filter state_changes if dice check failed
             if dice_applied and not dice_result.is_success:
@@ -390,7 +406,7 @@ class ProcessActionUseCase:
                     session = session.complete(EndingType.DEFEAT)
                     await self._session_repo.save(session)
                     ending_response = await self._handle_death_ending(
-                        session, character, narrative, recent_messages
+                        session, character, narrative, recent_messages, user_id
                     )
                     return session, ending_response
         else:
@@ -477,6 +493,7 @@ class ProcessActionUseCase:
             is_ending=session.remaining_turns <= 1,
             image_url=image_url,
             dice_result=dice_result_response,
+            before_roll_narrative=before_narrative if parsed else None,
         )
 
         return session, response
@@ -485,6 +502,7 @@ class ProcessActionUseCase:
         self,
         session: GameSessionEntity,
         recent_messages: list[GameMessageEntity],
+        user_id: Optional[UUID] = None,
     ) -> tuple[GameSessionEntity, GameEndingResponse]:
         """게임 엔딩 처리."""
         messages_for_llm = [
@@ -510,21 +528,16 @@ class ProcessActionUseCase:
             messages=messages_for_llm,
         )
 
-        # Parse ending (도메인 서비스 활용)
         ending_type = GameMasterService.parse_ending_type(llm_response.content)
         narrative = GameMasterService.extract_narrative_from_ending(
             llm_response.content
         )
 
-        # Update session to completed
         session = session.complete(ending_type)
-        # Note: We do NOT save here anymore. The caller (execute) handles saving.
 
-        # Load character name
         character = await self._character_repo.get_by_id(session.character_id)
         character_name = character.name if character else ""
 
-        # Save ending message
         ending_message = GameMessageEntity(
             id=get_uuid7(),
             session_id=session.id,
@@ -538,13 +551,42 @@ class ProcessActionUseCase:
         )
         await self._message_repo.create(ending_message)
 
+        xp_gained = 0
+        progression = None
+        if self._user_progression and user_id:
+            try:
+                scenario = await self._scenario_repo.get_by_id(
+                    session.scenario_id
+                )
+                difficulty = (
+                    scenario.difficulty
+                    if scenario
+                    else ScenarioDifficulty.NORMAL
+                )
+                xp_gained = UserProgressionService.calculate_game_xp(
+                    ending_type, session.turn_count, difficulty
+                )
+                progression = (
+                    await self._user_progression.award_game_experience(
+                        user_id, xp_gained
+                    )
+                )
+            except Exception as e:
+                logger.error(f"XP 부여 실패 (무시됨): {e}")
+                xp_gained = 0
+                progression = None
+
         response = GameEndingResponse(
             session_id=session.id,
             ending_type=ending_type.value,
             narrative=narrative,
             total_turns=session.turn_count,
             character_name=character_name,
-            scenario_name="",  # TODO: requires scenario_repository
+            scenario_name="",
+            xp_gained=xp_gained,
+            new_game_level=progression.game_level if progression else 1,
+            leveled_up=progression.leveled_up if progression else False,
+            levels_gained=progression.levels_gained if progression else 0,
         )
 
         return session, response
@@ -555,6 +597,7 @@ class ProcessActionUseCase:
         character: CharacterEntity,
         narrative: str,
         recent_messages: list[GameMessageEntity],
+        user_id: Optional[UUID] = None,
     ) -> GameActionResponse:
         death_narrative = (
             f"{narrative}\n\n"
@@ -571,6 +614,31 @@ class ProcessActionUseCase:
             created_at=get_utc_datetime(),
         )
         await self._message_repo.create(ending_message)
+
+        xp_gained = 0
+        progression = None
+        if self._user_progression and user_id:
+            try:
+                scenario = await self._scenario_repo.get_by_id(
+                    session.scenario_id
+                )
+                difficulty = (
+                    scenario.difficulty
+                    if scenario
+                    else ScenarioDifficulty.NORMAL
+                )
+                xp_gained = UserProgressionService.calculate_game_xp(
+                    EndingType.DEFEAT, session.turn_count, difficulty
+                )
+                progression = (
+                    await self._user_progression.award_game_experience(
+                        user_id, xp_gained
+                    )
+                )
+            except Exception as e:
+                logger.error(f"XP 부여 실패 (무시됨): {e}")
+                xp_gained = 0
+                progression = None
 
         return GameActionResponse(
             message=GameMessageResponse(
@@ -589,6 +657,9 @@ class ProcessActionUseCase:
             state_changes=None,
             image_url=None,
             dice_result=None,
+            xp_gained=xp_gained if xp_gained > 0 else None,
+            leveled_up=progression.leveled_up if progression else None,
+            new_game_level=progression.game_level if progression else None,
         )
 
     async def _check_idempotency(

@@ -192,6 +192,22 @@ class GameMasterService:
         return parsed.get("dice_applied", False)
 
     @staticmethod
+    def extract_before_narrative_from_parsed(
+        parsed: dict,
+    ) -> Optional[str]:
+        """파싱된 JSON에서 before_narrative 추출.
+
+        주사위 결과가 나오기 전의 상황 묘사를 추출합니다.
+
+        Args:
+            parsed: 파싱된 JSON 딕셔너리
+
+        Returns:
+            before_narrative 텍스트, 필드가 없으면 None
+        """
+        return parsed.get("before_narrative", None)
+
+    @staticmethod
     def filter_state_changes_on_dice_failure(
         state_changes: StateChanges,
     ) -> StateChanges:

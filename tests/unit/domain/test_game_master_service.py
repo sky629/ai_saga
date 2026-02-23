@@ -212,6 +212,37 @@ Some extra text here"""
         assert result == []
 
 
+class TestGameMasterServiceBeforeNarrative:
+    """GameMasterService before_narrative 추출 테스트."""
+
+    def test_extract_before_narrative_from_parsed_with_field(self):
+        """before_narrative 필드가 있으면 해당 값을 반환."""
+        parsed = {
+            "before_narrative": "당신은 검을 들어올립니다.",
+            "narrative": "검이 빛나며 적을 베었습니다!",
+        }
+
+        result = GameMasterService.extract_before_narrative_from_parsed(parsed)
+
+        assert result == "당신은 검을 들어올립니다."
+
+    def test_extract_before_narrative_from_parsed_missing_field(self):
+        """before_narrative 필드가 없으면 None 반환."""
+        parsed = {"narrative": "결과 서술"}
+
+        result = GameMasterService.extract_before_narrative_from_parsed(parsed)
+
+        assert result is None
+
+    def test_extract_before_narrative_from_parsed_empty_string(self):
+        """before_narrative가 빈 문자열이면 빈 문자열 반환."""
+        parsed = {"before_narrative": "", "narrative": "결과"}
+
+        result = GameMasterService.extract_before_narrative_from_parsed(parsed)
+
+        assert result == ""
+
+
 class TestGameMasterServiceDiceFiltering:
     """GameMasterService dice_applied extraction and state_changes filtering tests."""
 

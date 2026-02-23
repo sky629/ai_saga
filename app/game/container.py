@@ -6,6 +6,9 @@ FastAPI의 Depends와 연동하여 Use Case 및 Repository 의존성을 관리�
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.infrastructure.repositories.user_progression_repository import (
+    UserProgressionRepositoryImpl,
+)
 from app.game.application.ports import (
     CacheServiceInterface,
     CharacterRepositoryInterface,
@@ -14,6 +17,7 @@ from app.game.application.ports import (
     ImageGenerationServiceInterface,
     LLMServiceInterface,
     ScenarioRepositoryInterface,
+    UserProgressionInterface,
 )
 from app.game.application.services.embedding_cache_service import (
     EmbeddingCacheService,
@@ -118,6 +122,10 @@ class GameContainer:
         """메시지 저장소."""
         return GameMessageRepositoryImpl(self._db)
 
+    def user_progression_repository(self) -> UserProgressionInterface:
+        """유저 게임 진행도 저장소."""
+        return UserProgressionRepositoryImpl(self._db)
+
     # === Use Case Factories ===
 
     def process_action_use_case(self) -> ProcessActionUseCase:
@@ -131,6 +139,7 @@ class GameContainer:
             cache_service=self.cache_service,
             image_service=self.image_service,
             embedding_service=self.embedding_cache_service,  # ✅ 캐싱 적용
+            user_progression=self.user_progression_repository(),
         )
 
     def start_game_use_case(self) -> StartGameUseCase:
@@ -151,6 +160,7 @@ class GameContainer:
             session_repository=self.session_repository(),
             message_repository=self.message_repository(),
             llm_service=self.llm_service,
+            user_progression=self.user_progression_repository(),
         )
 
     def create_character_use_case(self) -> CreateCharacterUseCase:
@@ -159,6 +169,7 @@ class GameContainer:
             character_repository=self.character_repository(),
             session_repository=self.session_repository(),
             scenario_repository=self.scenario_repository(),
+            user_progression=self.user_progression_repository(),
         )
 
     def delete_session_use_case(self) -> DeleteSessionUseCase:

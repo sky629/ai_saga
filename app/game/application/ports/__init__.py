@@ -171,3 +171,34 @@ class ImageGenerationServiceInterface(ABC):
             생성된 이미지의 공개 URL, 실패 시 None
         """
         pass
+
+
+from pydantic import BaseModel
+
+
+class UserProgressionResult(BaseModel):
+    """유저 게임 레벨 진행 결과."""
+
+    model_config = {"frozen": True}
+
+    game_level: int
+    game_experience: int
+    game_current_experience: int
+    leveled_up: bool
+    levels_gained: int
+
+
+class UserProgressionInterface(ABC):
+    """유저 게임 진행도 저장소 인터페이스."""
+
+    @abstractmethod
+    async def get_user_game_level(self, user_id: UUID) -> int:
+        """유저의 현재 게임 레벨 조회."""
+        pass
+
+    @abstractmethod
+    async def award_game_experience(
+        self, user_id: UUID, xp: int
+    ) -> UserProgressionResult:
+        """유저에게 게임 경험치 부여 후 결과 반환."""
+        pass

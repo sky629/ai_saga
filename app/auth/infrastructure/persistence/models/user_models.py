@@ -36,6 +36,13 @@ class User(Base):
     user_level: Mapped[int] = mapped_column(
         Integer, nullable=False, default=100
     )  # 100: normal, 1000: admin
+    game_level: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    game_experience: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    game_current_experience: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
     profile_image_url: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True
     )

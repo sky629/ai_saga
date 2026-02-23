@@ -29,6 +29,9 @@ class UserMapper:
             created_at=orm.created_at,
             updated_at=orm.updated_at,
             last_login_at=orm.last_login_at,
+            game_level=orm.game_level,
+            game_experience=orm.game_experience,
+            game_current_experience=orm.game_current_experience,
         )
 
     @staticmethod
@@ -42,6 +45,9 @@ class UserMapper:
             "email_verified": entity.email_verified,
             "updated_at": entity.updated_at,
             "last_login_at": entity.last_login_at,
+            "game_level": entity.game_level,
+            "game_experience": entity.game_experience,
+            "game_current_experience": entity.game_current_experience,
         }
 
 
