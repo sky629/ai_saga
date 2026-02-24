@@ -24,6 +24,7 @@ from app.game.dependencies import (
     CacheServiceDep,
     CreateCharacterDep,
     DeleteSessionDep,
+    GenerateIllustrationDep,
     GetCharactersDep,
     GetScenariosDep,
     GetSessionDep,
@@ -43,6 +44,7 @@ from app.game.presentation.routes.schemas.response import (
     GameActionResponse,
     GameEndingResponse,
     GameSessionResponse,
+    IllustrationResponse,
     MessageHistoryResponse,
     ScenarioResponse,
     SessionListResponse,
@@ -307,4 +309,36 @@ async def get_session_messages(
         items=messages,
         next_cursor=next_cursor,
         has_more=has_more,
+    )
+
+
+@game_router_v1.post(
+    "/sessions/{session_id}/messages/{message_id}/illustration/",
+    response_model=IllustrationResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def generate_illustration(
+    session_id: UUID,
+    message_id: UUID,
+    use_case: GenerateIllustrationDep,
+    current_user: User = Depends(get_current_user),
+):
+    from app.common.exception import APIException
+    from app.game.application.use_cases.generate_illustration import (
+        GenerateIllustrationInput,
+    )
+
+    try:
+        result = await use_case.execute(
+            current_user.id,
+            GenerateIllustrationInput(
+                session_id=session_id,
+                message_id=message_id,
+            ),
+        )
+    except APIException:
+        raise
+    return IllustrationResponse(
+        message_id=result.message_id,
+        image_url=result.image_url,
     )

@@ -87,3 +87,24 @@ class GameMessageRepositoryImpl(GameMessageRepositoryInterface):
         orms = result.scalars().all()
 
         return [GameMessageMapper.to_entity(orm) for orm in orms]
+
+    async def get_by_id(self, message_id: UUID) -> GameMessageEntity | None:
+        result = await self._db.execute(
+            select(GameMessage).where(GameMessage.id == message_id)
+        )
+        orm = result.scalar_one_or_none()
+        if orm is None:
+            return None
+        return GameMessageMapper.to_entity(orm)
+
+    async def update_image_url(
+        self, message_id: UUID, image_url: str
+    ) -> GameMessageEntity:
+        result = await self._db.execute(
+            select(GameMessage).where(GameMessage.id == message_id)
+        )
+        orm = result.scalar_one()
+        orm.image_url = image_url
+        await self._db.flush()
+        await self._db.refresh(orm)
+        return GameMessageMapper.to_entity(orm)

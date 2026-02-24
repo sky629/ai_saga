@@ -21,6 +21,7 @@ from app.game.application.use_cases import (
     CreateCharacterUseCase,
     DeleteSessionUseCase,
     GenerateEndingUseCase,
+    GenerateIllustrationUseCase,
     ProcessActionUseCase,
     StartGameUseCase,
 )
@@ -159,3 +160,14 @@ GetSessionHistoryDep = Annotated[
 ]
 GetCharactersDep = Annotated[GetCharactersQuery, Depends(get_characters_query)]
 GetSessionDep = Annotated[GetSessionQuery, Depends(get_session_query)]
+
+
+def get_generate_illustration_use_case(
+    container: Annotated[GameContainer, Depends(get_container)],
+):
+    return container.generate_illustration_use_case()
+
+
+GenerateIllustrationDep = Annotated[
+    GenerateIllustrationUseCase, Depends(get_generate_illustration_use_case)
+]

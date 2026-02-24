@@ -47,11 +47,8 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
 
     # Image Generation
-    image_generation_enabled: bool = True  # Enable/disable image generation
+    image_generation_enabled: bool = False  # Enable/disable image generation
     image_model: str = "imagen-3.0-generate-001"
-    image_generation_interval: int = (
-        3  # Turns per image generation (0 = every turn)
-    )
 
     # Cloudflare R2
     r2_access_key_id: str = ""

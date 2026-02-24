@@ -7,6 +7,8 @@ from abc import ABC, abstractmethod
 from typing import AsyncContextManager, Optional
 from uuid import UUID
 
+from pydantic import BaseModel
+
 from app.game.domain.entities import (
     CharacterEntity,
     GameMessageEntity,
@@ -116,6 +118,16 @@ class GameMessageRepositoryInterface(ABC):
         """
         pass
 
+    @abstractmethod
+    async def get_by_id(self, message_id: UUID) -> Optional[GameMessageEntity]:
+        pass
+
+    @abstractmethod
+    async def update_image_url(
+        self, message_id: UUID, image_url: str
+    ) -> GameMessageEntity:
+        pass
+
 
 class LLMServiceInterface(ABC):
     """LLM 서비스 인터페이스."""
@@ -171,9 +183,6 @@ class ImageGenerationServiceInterface(ABC):
             생성된 이미지의 공개 URL, 실패 시 None
         """
         pass
-
-
-from pydantic import BaseModel
 
 
 class UserProgressionResult(BaseModel):

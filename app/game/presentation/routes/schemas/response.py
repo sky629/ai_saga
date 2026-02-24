@@ -183,3 +183,8 @@ class MessageResponse(BaseModel):
     """Simple message response."""
 
     message: str
+
+
+class IllustrationResponse(BaseModel):
+    message_id: UUID
+    image_url: str

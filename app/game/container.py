@@ -26,6 +26,7 @@ from app.game.application.use_cases import (
     CreateCharacterUseCase,
     DeleteSessionUseCase,
     GenerateEndingUseCase,
+    GenerateIllustrationUseCase,
     ProcessActionUseCase,
     StartGameUseCase,
 )
@@ -177,6 +178,13 @@ class GameContainer:
         return DeleteSessionUseCase(
             session_repository=self.session_repository(),
             character_repository=self.character_repository(),
+        )
+
+    def generate_illustration_use_case(self) -> GenerateIllustrationUseCase:
+        return GenerateIllustrationUseCase(
+            session_repository=self.session_repository(),
+            message_repository=self.message_repository(),
+            image_service=self.image_service,
         )
 
     # === Query Factories (CQRS Read Side) ===
