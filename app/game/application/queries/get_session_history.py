@@ -29,6 +29,7 @@ class MessageHistoryItem(BaseModel):
     content: str
     created_at: datetime
     parsed_response: Optional[dict] = None
+    image_url: Optional[str] = None
 
 
 class SessionHistoryResult(BaseModel):
@@ -93,6 +94,7 @@ class GetSessionHistoryQuery:
                     content=m.content,
                     created_at=m.created_at,
                     parsed_response=m.parsed_response,
+                    image_url=m.image_url,
                 )
                 for m in messages
             ],
@@ -120,6 +122,7 @@ class GetSessionHistoryQuery:
                 content=m.content,
                 created_at=m.created_at,
                 parsed_response=m.parsed_response,
+                image_url=m.image_url,
             )
             for m in reversed(list(messages))
         ]
@@ -226,6 +229,7 @@ class GetSessionHistoryQuery:
                 content=m.content,
                 created_at=m.created_at,
                 parsed_response=m.parsed_response,
+                image_url=m.image_url,
             )
             for m in messages
         ]

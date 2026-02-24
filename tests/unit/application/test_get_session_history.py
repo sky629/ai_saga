@@ -162,5 +162,6 @@ class TestGetSessionHistoryQuery:
         mock_msg.content = f"Message {index}"
         mock_msg.created_at = get_utc_datetime()
         mock_msg.parsed_response = None
+        mock_msg.image_url = None
 
         return mock_msg
