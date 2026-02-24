@@ -52,6 +52,7 @@ class MessageHistoryResponse(BaseModel):
     content: str
     created_at: datetime
     parsed_response: Optional[dict] = None
+    image_url: Optional[str] = None
 
 
 class ScenarioResponse(BaseModel):
