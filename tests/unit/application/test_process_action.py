@@ -4,7 +4,7 @@ Tests the business logic of action processing with mocked repositories.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -213,7 +213,6 @@ class TestGameEndingDetection:
             embedding_service=repos["embedding_service"],
         )
 
-    @patch("config.settings.settings")
     async def test_second_to_last_turn_has_is_ending_true(self, base_session):
         """Turn 9 (max=10): is_ending=True 경고 - 다음 턴이 마지막임을 알림."""
         # Given: turn_count=8, advance_turn() 후 9가 됨 → remaining_turns=1
@@ -236,7 +235,6 @@ class TestGameEndingDetection:
         assert result.response.turn_count == 9
         assert result.response.max_turns == 10
 
-    @patch("config.settings.settings")
     async def test_normal_turn_has_is_ending_false(self, base_session):
         """Turn 5 (max=10): is_ending=False - 아직 여러 턴 남음."""
         # Given: turn_count=4, advance_turn() 후 5가 됨 → remaining_turns=5
@@ -257,7 +255,6 @@ class TestGameEndingDetection:
         assert isinstance(result.response, GameActionResponse)
         assert result.response.is_ending is False
 
-    @patch("config.settings.settings")
     async def test_final_turn_returns_game_ending_response(self, base_session):
         """Turn 10 (max=10): GameEndingResponse 반환 - 게임 종료."""
         # Given: turn_count=9, advance_turn() 후 10이 됨 → is_final_turn=True
@@ -284,7 +281,6 @@ class TestGameEndingDetection:
         assert result.response.total_turns == 10
         assert result.response.session_id == session.id
 
-    @patch("config.settings.settings")
     async def test_game_ending_response_has_character_name(self, base_session):
         """GameEndingResponse에 character_name이 실제 캐릭터 이름으로 채워짐."""
         # Given: turn_count=9 (마지막 턴)
@@ -386,6 +382,10 @@ class TestScenarioLoading:
         message_repo.get_similar_messages.return_value = []
 
         character_repo = AsyncMock()
+        character_mock = MagicMock()
+        character_mock.name = "테스트 캐릭터"
+        character_mock.stats.level = 1
+        character_repo.get_by_id.return_value = character_mock
 
         scenario_repo = AsyncMock()
         scenario_repo.get_by_id.return_value = mock_scenario
@@ -425,7 +425,6 @@ class TestScenarioLoading:
             embedding_service=mock_repositories["embedding_service"],
         )
 
-    @patch("config.settings.settings")
     async def test_scenario_loaded_in_normal_turn(
         self, use_case, active_session, mock_repositories
     ):
@@ -442,7 +441,6 @@ class TestScenarioLoading:
             active_session.scenario_id
         )
 
-    @patch("config.settings.settings")
     async def test_scenario_name_passed_to_prompt(
         self, use_case, active_session, mock_repositories
     ):
@@ -462,7 +460,6 @@ class TestScenarioLoading:
 
         assert "던전 탐험" in system_prompt
 
-    @patch("config.settings.settings")
     async def test_scenario_world_setting_passed_to_prompt(
         self, use_case, active_session, mock_repositories
     ):
@@ -482,7 +479,6 @@ class TestScenarioLoading:
 
         assert "중세 판타지 세계" in system_prompt
 
-    @patch("config.settings.settings")
     async def test_scenario_not_found_raises_error(
         self, use_case, active_session, mock_repositories
     ):

@@ -49,6 +49,8 @@ async def test_save_new_session_includes_user_id(db_session):
     # Create Character
     character = Character(
         id=character_id,
+        user_id=user_id,
+        scenario_id=scenario_id,
         name="테스트 캐릭터",
         description="테스트용 캐릭터",
         stats={"strength": 10, "intelligence": 10},
@@ -124,6 +126,8 @@ async def test_save_existing_session_preserves_user_id(db_session):
     # Create Character
     character = Character(
         id=character_id,
+        user_id=user_id,
+        scenario_id=scenario_id,
         name="테스트 캐릭터 2",
         description="테스트용 캐릭터",
         stats={"strength": 10, "intelligence": 10},
@@ -133,11 +137,10 @@ async def test_save_existing_session_preserves_user_id(db_session):
     # Create Scenario
     scenario = Scenario(
         id=scenario_id,
-        title="테스트 시나리오 2",
+        name="테스트 시나리오 2",
         description="테스트용 시나리오",
         initial_location="시작 위치",
-        world_context="테스트 세계관",
-        available_actions=[],
+        world_setting="테스트 세계관",
     )
     db_session.add(scenario)
     await db_session.flush()

@@ -43,7 +43,7 @@ class CharacterStats(BaseModel):
         """다음 레벨까지 필요한 경험치 계산.
 
         Returns:
-            필요 경험치 (level × 100)
+            필요 경험치 (level * 100)
         """
         return self.level * 100
 

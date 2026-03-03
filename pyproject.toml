@@ -21,6 +21,7 @@ dependencies = [
     "python-rapidjson>=1.10",
     "redis>=6.2.0",
     "slowapi>=0.1.9",
+    "sentry-sdk[fastapi]>=2.39.0",
     "sqlalchemy[asyncio]>=2.0.42",
     "uvicorn[standard]>=0.35.0",
     "uuid-utils>=0.10.0",

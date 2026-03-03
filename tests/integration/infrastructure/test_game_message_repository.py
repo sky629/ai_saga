@@ -7,8 +7,10 @@ from app.auth.infrastructure.persistence.models.user_models import User
 from app.common.utils.datetime import get_utc_datetime
 from app.common.utils.id_generator import get_uuid7
 from app.game.infrastructure.persistence.models.game_models import (
+    Character,
     GameMessage,
     GameSession,
+    Scenario,
 )
 from app.game.infrastructure.repositories.game_message_repository import (
     GameMessageRepositoryImpl,
@@ -22,6 +24,8 @@ async def test_update_image_url(db_session):
     user_id = get_uuid7()
     session_id = get_uuid7()
     message_id = get_uuid7()
+    scenario_id = get_uuid7()
+    character_id = get_uuid7()
 
     user = User(
         id=user_id,
@@ -31,13 +35,31 @@ async def test_update_image_url(db_session):
         game_experience=0,
     )
     db_session.add(user)
+
+    scenario = Scenario(
+        id=scenario_id,
+        name="테스트 시나리오",
+        description="테스트용 시나리오",
+        world_setting="테스트 세계관",
+        initial_location="시작 위치",
+    )
+    db_session.add(scenario)
+
+    character = Character(
+        id=character_id,
+        user_id=user_id,
+        scenario_id=scenario_id,
+        name="테스트 캐릭터",
+        description="테스트 캐릭터 설명",
+    )
+    db_session.add(character)
     await db_session.flush()
 
     session = GameSession(
         id=session_id,
         user_id=user_id,
-        character_id=get_uuid7(),
-        scenario_id=get_uuid7(),
+        character_id=character_id,
+        scenario_id=scenario_id,
         current_location="Test Location",
         status="ACTIVE",
         turn_count=0,
@@ -52,7 +74,6 @@ async def test_update_image_url(db_session):
         session_id=session_id,
         role="assistant",
         content="Test narrative",
-        is_ai_response=True,
         image_url=None,  # 초기값 None
         created_at=get_utc_datetime(),
     )

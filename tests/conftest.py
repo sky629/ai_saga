@@ -4,17 +4,14 @@ Note: App-related fixtures (app, client, async_client) require environment
 variables to be set. Unit tests for isolated modules like LLM can run without them.
 """
 
-import asyncio
+import os
 
 import pytest
 
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# 테스트 시 로컬 의존성 주소를 우선 사용한다.
+os.environ["POSTGRES_HOST"] = "localhost"
+os.environ["TEST_POSTGRES_HOST"] = "localhost"
+os.environ["REDIS_URL"] = "redis://localhost:6379"
 
 
 @pytest.fixture
@@ -45,6 +42,33 @@ async def async_client(app):
     from httpx import ASGITransport, AsyncClient
 
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
     ) as client:
         yield client
+
+
+@pytest.fixture(autouse=True)
+async def reset_connection_pools():
+    """테스트 간 Redis/Postgres 커넥션 풀 공유를 방지한다."""
+    import redis.asyncio as redis
+
+    redis_client = redis.from_url("redis://localhost:6379", db=1)
+    await redis_client.flushdb()
+    await redis_client.aclose()
+
+    yield
+
+    from app.common.storage.postgres import postgres_storage
+    from app.common.storage import redis as redis_storage
+    from app.common.storage.redis import pools
+
+    try:
+        await pools.close_all()
+    except RuntimeError:
+        redis_storage._POOLS = {}
+
+    try:
+        await postgres_storage.close_all_pools()
+    except RuntimeError:
+        pass

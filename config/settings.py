@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     # CORS
     allowed_origins: str = "http://localhost:3000,http://localhost:8080"
 
+    # Sentry
+    sentry_dsn: str = ""
+    sentry_enabled: bool = True
+    sentry_enabled_environments: str = "prod"
+    sentry_traces_sample_rate: float = 0.0
+
     def is_prod(self) -> bool:
         return self.KANG_ENV.lower() == "prod"
 

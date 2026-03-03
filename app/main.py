@@ -1,4 +1,6 @@
+import copy
 from logging import config as logging_config
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,12 +33,138 @@ from app.dev.routes import dev_router
 from app.game.presentation.routes.game_routes import game_router_v1
 from config.settings import settings
 
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+except ImportError:  # pragma: no cover - optional dependency guard
+    sentry_sdk = None
+    FastApiIntegration = None
+    StarletteIntegration = None
+
 router = APIRouter()
+SENTRY_FILTERED_VALUE = "[Filtered]"
+SENSITIVE_FIELD_KEYWORDS = {
+    "authorization",
+    "cookie",
+    "set-cookie",
+    "password",
+    "secret",
+    "token",
+    "api_key",
+    "apikey",
+    "jwt",
+    "session",
+}
+_SENTRY_INITIALIZED = False
 
 
 @router.get("/api/ping/")
 async def pong():
     return {"ping": "pong!"}
+
+
+def _should_enable_sentry(
+    dsn: str, environment: str, enabled_environments: str
+) -> bool:
+    if not settings.sentry_enabled or not dsn.strip():
+        return False
+
+    enabled_envs = {
+        env.strip().lower()
+        for env in enabled_environments.split(",")
+        if env.strip()
+    }
+    return environment.strip().lower() in enabled_envs
+
+
+def _is_sensitive_key(key: str) -> bool:
+    normalized_key = key.replace("-", "_").lower()
+    return any(
+        sensitive in normalized_key for sensitive in SENSITIVE_FIELD_KEYWORDS
+    )
+
+
+def _mask_sensitive_data(payload: Any) -> Any:
+    if isinstance(payload, dict):
+        masked_payload: Dict[Any, Any] = {}
+        for key, value in payload.items():
+            if isinstance(key, str) and _is_sensitive_key(key):
+                masked_payload[key] = SENTRY_FILTERED_VALUE
+                continue
+            masked_payload[key] = _mask_sensitive_data(value)
+        return masked_payload
+
+    if isinstance(payload, list):
+        return [_mask_sensitive_data(item) for item in payload]
+
+    return payload
+
+
+def _sentry_before_send(
+    event: Dict[str, Any], hint: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    del hint
+    masked_event = copy.deepcopy(event)
+
+    request_data = masked_event.get("request")
+    if isinstance(request_data, dict):
+        request_data["headers"] = _mask_sensitive_data(
+            request_data.get("headers", {})
+        )
+        request_data["data"] = _mask_sensitive_data(
+            request_data.get("data", {})
+        )
+
+    masked_event["extra"] = _mask_sensitive_data(masked_event.get("extra", {}))
+
+    user_data = masked_event.get("user")
+    if isinstance(user_data, dict):
+        if "email" in user_data:
+            user_data["email"] = SENTRY_FILTERED_VALUE
+        if "ip_address" in user_data:
+            user_data["ip_address"] = SENTRY_FILTERED_VALUE
+
+    return masked_event
+
+
+def _initialize_sentry() -> bool:
+    global _SENTRY_INITIALIZED
+
+    if _SENTRY_INITIALIZED:
+        return True
+
+    if sentry_sdk is None:
+        logger.warning("sentry-sdk is not installed. Skipping Sentry setup.")
+        return False
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.KANG_ENV.lower(),
+        integrations=[
+            FastApiIntegration(),
+            StarletteIntegration(),
+        ],
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        before_send=_sentry_before_send,
+        send_default_pii=False,
+    )
+    _SENTRY_INITIALIZED = True
+    logger.info("Sentry initialized.")
+    return True
+
+
+def _set_sentry_request_context(request) -> None:
+    if sentry_sdk is None:
+        return
+
+    user_id = request.headers.get("x-user-id")
+    session_id = request.headers.get("x-session-id")
+    if user_id:
+        sentry_sdk.set_user({"id": user_id})
+        sentry_sdk.set_tag("user_id", user_id)
+    if session_id:
+        sentry_sdk.set_tag("session_id", session_id)
 
 
 def get_custom_openapi(f_app: FastAPI):
@@ -89,6 +217,19 @@ def create_app(logging_configuration: dict):
             }
         )
     _app = FastAPI(**app_args)
+
+    sentry_enabled = _should_enable_sentry(
+        dsn=settings.sentry_dsn,
+        environment=settings.KANG_ENV,
+        enabled_environments=settings.sentry_enabled_environments,
+    )
+    if sentry_enabled and _initialize_sentry():
+
+        @_app.middleware("http")
+        async def sentry_context_middleware(request, call_next):
+            with sentry_sdk.push_scope():
+                _set_sentry_request_context(request)
+                return await call_next(request)
 
     # Add CORS middleware
     _app.add_middleware(
