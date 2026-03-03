@@ -49,9 +49,11 @@ repos:
       - id: debug-statements
         name: Check for debug statements
 
-# 커밋 메시지 체크 (선택사항)
-# - repo: https://github.com/commitizen-tools/commitizen
-#   rev: v3.12.0
-#   hooks:
-#     - id: commitizen
-#       stages: [commit-msg]
+  # 4. Commit message rule
+  - repo: local
+    hooks:
+      - id: commit-msg-convention
+        name: Commit message convention
+        entry: '^(feat|fix|chore|refactor|docs|test|perf|ci|build|revert|style): .+'
+        language: pygrep
+        stages: [commit-msg]

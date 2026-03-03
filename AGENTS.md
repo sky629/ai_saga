@@ -13,6 +13,25 @@ These rules are mandatory across all sessions.
    Planning -> Design -> Review/Revision -> BE/FE Implementation (TDD) -> QA.
 6. Commit and push only from the corresponding feature worktree branch.
 
+### Commit Message Rule (Mandatory)
+
+- Format: `<type>: <message>`
+- Allowed types:
+  - `feat`, `fix`, `chore`, `refactor`
+  - `docs`, `test`, `perf`, `ci`, `build`, `revert`, `style`
+- Examples:
+  - `feat: 게임 시작 메시지 parsed_response 저장`
+  - `fix: RAG 컨텍스트 상태 충돌 필터 버그 수정`
+  - `chore: 운영 가이드 문구 정리`
+  - `refactor: process_action 내부 import 정리`
+  - `docs: AGENTS 커밋 규칙 업데이트`
+  - `test: 시작 메시지 parsed_response 단위 테스트 추가`
+  - `perf: 벡터 검색 후보 수 최적화`
+  - `ci: GitHub Actions 테스트 워크플로우 수정`
+  - `build: 의존성 잠금 파일 업데이트`
+  - `revert: RAG 가중치 변경 롤백`
+  - `style: import 정렬 및 포맷 정리`
+
 ## Commands
 
 ```bash
