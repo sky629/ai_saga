@@ -1,5 +1,18 @@
 # AGENTS.md — AI Saga Coding Agent Guide
 
+## Persistent Operating Rules (User-Mandated)
+
+These rules are mandatory across all sessions.
+
+1. Always follow [`TEAM_OPERATIONS_GUIDE.md`](TEAM_OPERATIONS_GUIDE.md).
+2. Always follow [`WORKTREE_GUIDE.md`](WORKTREE_GUIDE.md).
+3. Never implement feature work directly on `main`.
+4. For every feature/fix/chore, create and use a dedicated `git worktree`
+   and branch (`feat/*`, `fix/*`, `chore/*`).
+5. Use stage gates for each feature:
+   Planning -> Design -> Review/Revision -> BE/FE Implementation (TDD) -> QA.
+6. Commit and push only from the corresponding feature worktree branch.
+
 ## Commands
 
 ```bash

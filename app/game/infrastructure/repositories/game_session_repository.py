@@ -1,8 +1,10 @@
 """GameSession Repository Implementation."""
 
+import logging
 from typing import Optional
 from uuid import UUID
 
+from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -10,7 +12,12 @@ from sqlalchemy.orm import selectinload
 from app.game.application.ports import GameSessionRepositoryInterface
 from app.game.domain.entities import GameSessionEntity
 from app.game.infrastructure.persistence.mappers import GameSessionMapper
-from app.game.infrastructure.persistence.models.game_models import GameSession
+from app.game.infrastructure.persistence.models.game_models import (
+    GameMessage,
+    GameSession,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
@@ -59,10 +66,6 @@ class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
 
     async def save(self, session: GameSessionEntity) -> GameSessionEntity:
         """세션 저장 (생성 또는 업데이트)."""
-        import logging
-
-        logger = logging.getLogger(__name__)
-
         # Check if exists
         result = await self._db.execute(
             select(GameSession).where(GameSession.id == session.id)
@@ -115,13 +118,6 @@ class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
 
     async def delete(self, session_id: UUID) -> None:
         """세션 삭제."""
-        from sqlalchemy import delete as sql_delete
-
-        from app.game.infrastructure.persistence.models.game_models import (
-            GameMessage,
-            GameSession,
-        )
-
         # Delete related messages first
         await self._db.execute(
             sql_delete(GameMessage).where(GameMessage.session_id == session_id)

@@ -20,6 +20,7 @@ from app.game.application.ports import (
     ScenarioRepositoryInterface,
 )
 from app.game.domain.entities import GameMessageEntity, GameSessionEntity
+from app.game.domain.services import GameMasterService
 from app.game.domain.value_objects import MessageRole, SessionStatus
 from app.game.presentation.routes.schemas.response import GameSessionResponse
 from app.llm.prompts.game_master import GameMasterPrompt
@@ -155,6 +156,7 @@ class StartGameUseCase:
                 }
             ],
         )
+        parsed = GameMasterService.parse_llm_response(response.content)
 
         # Save initial message
         initial_image_url = None
@@ -177,6 +179,7 @@ class StartGameUseCase:
             session_id=session.id,
             role=MessageRole.ASSISTANT,
             content=response.content,
+            parsed_response=parsed if parsed else None,
             token_count=(
                 response.usage.total_tokens if response.usage else None
             ),

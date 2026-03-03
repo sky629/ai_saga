@@ -3,6 +3,8 @@
 Uses Google's new genai SDK to interact with Gemini models.
 """
 
+import logging
+
 from google import genai
 from google.genai import types
 from google.genai.errors import ClientError
@@ -16,6 +18,8 @@ from tenacity import (
 from app.common.exception import TooManyRequests
 from app.llm.dto.llm_response import LLMResponse, TokenUsage
 from app.llm.providers.base import LLMProvider
+
+logger = logging.getLogger("uvicorn")
 
 
 class GeminiProvider(LLMProvider):
@@ -39,9 +43,6 @@ class GeminiProvider(LLMProvider):
         self._client = genai.Client(api_key=api_key)
         self.model_name = model_name
         masked_key = api_key[:5] + "*" * 5 if api_key else "None"
-        import logging
-
-        logger = logging.getLogger("uvicorn")
         logger.info(
             f"DEBUG: GeminiProvider initialized with API Key: {masked_key}"
         )
@@ -87,9 +88,6 @@ class GeminiProvider(LLMProvider):
                 ),
             )
         except ClientError as e:
-            import logging
-
-            logger = logging.getLogger("uvicorn")
             logger.warning(f"DEBUG: Gemini ClientError: {e}")
 
             # Check for 429 Too Many Requests or quota exhaustion
@@ -99,9 +97,6 @@ class GeminiProvider(LLMProvider):
                 )
             raise e
         except Exception as e:
-            import logging
-
-            logger = logging.getLogger("uvicorn")
             logger.error(f"DEBUG: Gemini API Error: {e}", exc_info=True)
             raise e
 

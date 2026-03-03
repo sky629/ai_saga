@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     # Game Settings
     game_min_turns: int = 1
     game_max_turns: int = 30
+    rag_recent_messages_limit: int = 10
+    rag_similar_messages_limit: int = 2
+    rag_distance_threshold: float = 0.3
+    rag_similarity_weight: float = 0.7
+    rag_recency_weight: float = 0.3
 
     # Kafka
     kafka_bootstrap_servers: str = "localhost:9092"

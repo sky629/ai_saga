@@ -14,6 +14,8 @@ from app.game.domain.entities.character import CharacterStats
 from app.game.domain.value_objects import (
     EndingType,
     MessageRole,
+    ScenarioDifficulty,
+    ScenarioGenre,
     SessionStatus,
 )
 from app.game.infrastructure.persistence.models.game_models import (
@@ -106,11 +108,6 @@ class ScenarioMapper:
     @staticmethod
     def to_entity(orm: Scenario) -> ScenarioEntity:
         """ORM 모델을 도메인 엔티티로 변환."""
-        from app.game.domain.value_objects import (
-            ScenarioDifficulty,
-            ScenarioGenre,
-        )
-
         return ScenarioEntity(
             id=orm.id,
             name=orm.name,

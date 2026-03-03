@@ -1,5 +1,7 @@
 """Global exception handlers for the application."""
 
+import traceback
+
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -81,8 +83,6 @@ async def general_exception_handler(
 
     content = {"message": "Internal server error"}
     if not settings.is_prod():
-        import traceback
-
         content["detail"] = str(exc)
         content["traceback"] = traceback.format_exc().split("\n")
 

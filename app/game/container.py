@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.infrastructure.repositories.user_progression_repository import (
     UserProgressionRepositoryImpl,
 )
+from app.common.storage.redis import pools
 from app.game.application.ports import (
     CacheServiceInterface,
     CharacterRepositoryInterface,
@@ -19,6 +20,13 @@ from app.game.application.ports import (
     ScenarioRepositoryInterface,
     UserProgressionInterface,
 )
+from app.game.application.queries import (
+    GetScenariosQuery,
+    GetSessionHistoryQuery,
+    GetSessionQuery,
+    GetUserSessionsQuery,
+)
+from app.game.application.queries.get_characters import GetCharactersQuery
 from app.game.application.services.embedding_cache_service import (
     EmbeddingCacheService,
 )
@@ -191,36 +199,23 @@ class GameContainer:
 
     def get_scenarios_query(self):
         """시나리오 목록 조회 쿼리."""
-        from app.game.application.queries import GetScenariosQuery
-
         return GetScenariosQuery(self._db)
 
     def get_user_sessions_query(self):
         """사용자 세션 목록 조회 쿼리."""
-        from app.game.application.queries import GetUserSessionsQuery
-
         return GetUserSessionsQuery(self._db)
 
     async def get_session_history_query(self):
         """세션 히스토리 조회 쿼리."""
-        from app.common.storage.redis import pools
-        from app.game.application.queries import GetSessionHistoryQuery
-
         redis = await pools.get_connection()
         return GetSessionHistoryQuery(self._db, redis)
 
     def get_characters_query(self):
         """캐릭터 목록 조회 쿼리."""
-        from app.game.application.queries.get_characters import (
-            GetCharactersQuery,
-        )
-
         return GetCharactersQuery(self._db)
 
     def get_session_query(self):
         """게임 세션 단건 조회 쿼리."""
-        from app.game.application.queries import GetSessionQuery
-
         return GetSessionQuery(self.session_repository())
 
 

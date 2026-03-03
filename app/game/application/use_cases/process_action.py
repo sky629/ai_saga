@@ -23,6 +23,7 @@ from app.game.application.ports import (
     ScenarioRepositoryInterface,
     UserProgressionInterface,
 )
+from app.game.application.services.rag_context_builder import RAGContextBuilder
 from app.game.domain.entities import (
     CharacterEntity,
     GameMessageEntity,
@@ -33,7 +34,12 @@ from app.game.domain.services import (
     GameMasterService,
     UserProgressionService,
 )
-from app.game.domain.value_objects import EndingType, GameState, MessageRole
+from app.game.domain.value_objects import (
+    EndingType,
+    GameState,
+    MessageRole,
+    SessionStatus,
+)
 from app.game.domain.value_objects.dice import DiceCheckType
 from app.game.domain.value_objects.scenario_difficulty import (
     ScenarioDifficulty,
@@ -49,6 +55,7 @@ from app.llm.prompts.game_master import (
     GameMasterPrompt,
     build_dice_result_section,
 )
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -148,25 +155,31 @@ class ProcessActionUseCase:
 
         # 7. Build hybrid context (Sliding Window + RAG)
         # 7.1. Get recent messages (sliding window)
+        recent_limit = max(1, settings.rag_recent_messages_limit)
         recent_messages = await self._message_repo.get_recent_messages(
-            session.id, limit=10
+            session.id, limit=recent_limit
         )
 
         # 7.2. Get similar messages (RAG)
+        rag_limit = max(0, settings.rag_similar_messages_limit)
+        rag_candidate_limit = max(rag_limit * 3, rag_limit)
         rag_messages = await self._message_repo.get_similar_messages(
             embedding=action_embedding,
             session_id=session.id,
-            limit=5,
-            distance_threshold=0.3,
+            limit=rag_candidate_limit,
+            distance_threshold=settings.rag_distance_threshold,
         )
 
-        # 7.3. Merge contexts (deduplicate and sort by time)
-        from app.game.application.services.rag_context_builder import (
-            RAGContextBuilder,
+        # 7.3. Merge contexts (state consistency + recency weighted RAG)
+        selected_rag_messages = RAGContextBuilder.select_relevant_rag_messages(
+            rag_messages=rag_messages,
+            current_location=session.current_location,
+            max_messages=rag_limit,
+            similarity_weight=settings.rag_similarity_weight,
+            recency_weight=settings.rag_recency_weight,
         )
-
         all_context_messages = RAGContextBuilder.merge_contexts(
-            recent_messages, rag_messages
+            recent_messages, selected_rag_messages
         )
 
         # 8. Check if final turn (domain logic)
@@ -192,8 +205,6 @@ class ProcessActionUseCase:
         self, session: GameSessionEntity, user_id: UUID
     ) -> None:
         """세션 유효성 검증."""
-        from app.game.domain.value_objects import SessionStatus
-
         # Check if session is already completed
         if session.status == SessionStatus.COMPLETED:
             # 상태가 이미 완료라면, 추가 액션 처리 불가
@@ -270,10 +281,6 @@ class ProcessActionUseCase:
         )
 
         # Try to parse JSON response
-        import logging
-
-        logger = logging.getLogger(__name__)
-
         parsed = GameMasterService.parse_llm_response(llm_response.content)
         logger.info(f"[DEBUG] LLM response parsed: {parsed is not None}")
 
@@ -306,9 +313,6 @@ class ProcessActionUseCase:
                 session = session.update_location(state_changes.location)
 
             # 🆕 Update Character HP and Inventory
-            import logging
-
-            logger = logging.getLogger(__name__)
             logger.info(
                 f"[DEBUG] state_changes: hp_change={state_changes.hp_change}, items_gained={state_changes.items_gained}, items_lost={state_changes.items_lost}"
             )
@@ -411,9 +415,6 @@ class ProcessActionUseCase:
                     return session, ending_response
         else:
             # Fallback to text parsing if JSON parsing fails
-            import logging
-
-            logger = logging.getLogger(__name__)
             logger.warning(
                 f"Failed to parse JSON from LLM response: {llm_response.content[:200]}"
             )

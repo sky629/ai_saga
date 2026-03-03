@@ -1,8 +1,10 @@
 """Character Repository Implementation."""
 
+import logging
 from typing import Optional
 from uuid import UUID
 
+from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +12,8 @@ from app.game.application.ports import CharacterRepositoryInterface
 from app.game.domain.entities import CharacterEntity
 from app.game.infrastructure.persistence.mappers import CharacterMapper
 from app.game.infrastructure.persistence.models.game_models import Character
+
+logger = logging.getLogger(__name__)
 
 
 class CharacterRepositoryImpl(CharacterRepositoryInterface):
@@ -44,10 +48,6 @@ class CharacterRepositoryImpl(CharacterRepositoryInterface):
 
     async def save(self, character: CharacterEntity) -> CharacterEntity:
         """캐릭터 저장."""
-        import logging
-
-        logger = logging.getLogger(__name__)
-
         result = await self._db.execute(
             select(Character).where(Character.id == character.id)
         )
@@ -87,8 +87,6 @@ class CharacterRepositoryImpl(CharacterRepositoryInterface):
 
     async def delete(self, character_id: UUID) -> None:
         """캐릭터 삭제."""
-        from sqlalchemy import delete as sql_delete
-
         await self._db.execute(
             sql_delete(Character).where(Character.id == character_id)
         )

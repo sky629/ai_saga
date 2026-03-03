@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.game.infrastructure.persistence.mappers import CharacterMapper
 from app.game.infrastructure.persistence.models.game_models import (
     Character,
     GameSession,
@@ -52,8 +53,6 @@ class GetUserSessionsQuery:
         cursor: Optional[UUID] = None,
     ) -> list[SessionListItem]:
         """사용자의 게임 세션 목록 조회."""
-        from app.game.infrastructure.persistence.mappers import CharacterMapper
-
         # 사용자의 캐릭터 ID 조회
         char_result = await self._db.execute(
             select(Character.id).where(Character.user_id == user_id)

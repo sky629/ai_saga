@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -184,16 +185,12 @@ def _set_sentry_request_context(request) -> None:
 
 
 def get_custom_openapi(f_app: FastAPI):
-    from fastapi.openapi.utils import get_openapi
-
-    from app import __version__ as app_version
-
     if f_app.openapi_schema:
         return f_app.openapi_schema
 
     openapi_schema = get_openapi(
         title="Kang Server Swagger",
-        version=app_version,
+        version=__version__,
         routes=f_app.routes,
     )
 

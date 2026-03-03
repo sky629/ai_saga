@@ -218,3 +218,75 @@ async def test_start_game_llm_failure_propagates_exception(
 
     # Message was NOT created -> 트랜잭션 롤백 시 세션도 함께 사라짐
     mock_message_repo.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_start_game_stores_parsed_response_when_llm_returns_json(
+    use_case,
+    mock_session_repo,
+    mock_character_repo,
+    mock_scenario_repo,
+    mock_message_repo,
+    mock_llm_service,
+):
+    """시작 메시지가 JSON 형식이면 parsed_response에 저장되어야 함."""
+    user_id = get_uuid7()
+    character_id = get_uuid7()
+    scenario_id = get_uuid7()
+
+    character = CharacterEntity(
+        id=character_id,
+        user_id=user_id,
+        scenario_id=scenario_id,
+        name="Hero",
+        description="Desc",
+        stats={},
+        inventory=[],
+        is_active=True,
+        created_at=get_utc_datetime(),
+    )
+    mock_character_repo.get_by_id.return_value = character
+
+    scenario = ScenarioEntity(
+        id=scenario_id,
+        name="Scenario",
+        description="Desc",
+        world_setting="World",
+        initial_location="Start",
+        genre="fantasy",
+        difficulty="normal",
+        max_turns=30,
+        is_active=True,
+        created_at=get_utc_datetime(),
+        updated_at=get_utc_datetime(),
+    )
+    mock_scenario_repo.get_by_id.return_value = scenario
+    mock_session_repo.get_active_by_character.return_value = None
+    mock_session_repo.save.side_effect = lambda session: session
+
+    mock_llm_response = MagicMock()
+    mock_llm_response.content = """```json
+{
+    "narrative": "게임 시작 내러티브",
+    "options": ["첫 행동", "두 번째 행동"],
+    "dice_applied": false,
+    "state_changes": {
+        "location": "Start"
+    }
+}
+```"""
+    mock_llm_response.usage.total_tokens = 10
+    mock_llm_service.generate_response.return_value = mock_llm_response
+
+    input_data = StartGameInput(
+        character_id=character_id, scenario_id=scenario_id
+    )
+
+    await use_case.execute(user_id, input_data)
+
+    created_message = mock_message_repo.create.call_args[0][0]
+    assert created_message.parsed_response is not None
+    assert created_message.parsed_response["narrative"] == "게임 시작 내러티브"
+    assert (
+        created_message.parsed_response["state_changes"]["location"] == "Start"
+    )

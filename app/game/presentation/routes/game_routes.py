@@ -15,8 +15,12 @@ from fastapi import (
 
 from app.auth.dependencies import get_current_user
 from app.auth.infrastructure.persistence.models.user_models import User
+from app.common.exception import APIException
 from app.game.application.use_cases.create_character import (
     CreateCharacterInput,
+)
+from app.game.application.use_cases.generate_illustration import (
+    GenerateIllustrationInput,
 )
 from app.game.application.use_cases.process_action import ProcessActionInput
 from app.game.application.use_cases.start_game import StartGameInput
@@ -323,11 +327,6 @@ async def generate_illustration(
     use_case: GenerateIllustrationDep,
     current_user: User = Depends(get_current_user),
 ):
-    from app.common.exception import APIException
-    from app.game.application.use_cases.generate_illustration import (
-        GenerateIllustrationInput,
-    )
-
     try:
         result = await use_case.execute(
             current_user.id,
