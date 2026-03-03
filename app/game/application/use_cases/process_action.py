@@ -436,6 +436,7 @@ class ProcessActionUseCase:
             session_id=session.id,
             role=MessageRole.ASSISTANT,
             content=llm_response.content,
+            parsed_response=parsed if parsed else None,
             token_count=(
                 llm_response.usage.total_tokens if llm_response.usage else None
             ),
@@ -465,7 +466,7 @@ class ProcessActionUseCase:
                 id=ai_message.id,
                 role=ai_message.role.value,
                 content=ai_message.content,
-                parsed_response=None,
+                parsed_response=ai_message.parsed_response,
                 image_url=image_url,
                 created_at=ai_message.created_at,
             ),
@@ -628,7 +629,7 @@ class ProcessActionUseCase:
                 id=ending_message.id,
                 role=ending_message.role.value,
                 content=ending_message.content,
-                parsed_response=None,
+                parsed_response=ending_message.parsed_response,
                 image_url=None,
                 created_at=ending_message.created_at,
             ),

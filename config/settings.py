@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     sentry_enabled: bool = True
     sentry_enabled_environments: str = "prod"
     sentry_traces_sample_rate: float = 0.0
+    sentry_enable_logs: Optional[bool] = None
+    sentry_send_default_pii: bool = False
+    sentry_profile_session_sample_rate: float = 0.0
+    sentry_profile_lifecycle: str = "trace"
 
     def is_prod(self) -> bool:
         return self.KANG_ENV.lower() == "prod"

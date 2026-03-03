@@ -151,7 +151,7 @@ async def test_process_action_with_experience_gain(
         action="고블린을 공격한다",
         idempotency_key="test-key-001",
     )
-    await use_case.execute(
+    result = await use_case.execute(
         user_id=test_session.user_id,
         input_data=input_data,
     )
@@ -167,6 +167,33 @@ async def test_process_action_with_experience_gain(
     assert saved_character.stats.level == 1
     assert saved_character.stats.experience == 80  # 50 + 30
     assert saved_character.stats.current_experience == 80
+
+    # Structured JSON should be stored in parsed_response
+    created_messages = [
+        call.args[0]
+        for call in mock_repositories[
+            "message_repository"
+        ].create.call_args_list
+    ]
+    assistant_message = next(
+        message
+        for message in created_messages
+        if message.role.value == "assistant"
+    )
+    assert assistant_message.parsed_response is not None
+    assert (
+        assistant_message.parsed_response["narrative"]
+        == "고블린을 처치했습니다!"
+    )
+    assert (
+        assistant_message.parsed_response["state_changes"]["experience_gained"]
+        == 30
+    )
+    assert result.response.message.parsed_response is not None
+    assert result.response.message.parsed_response["options"] == [
+        "계속 진행",
+        "휴식",
+    ]
 
 
 @pytest.mark.asyncio

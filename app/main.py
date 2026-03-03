@@ -78,6 +78,15 @@ def _should_enable_sentry(
     return environment.strip().lower() in enabled_envs
 
 
+def _resolve_sentry_enable_logs(
+    environment: str, configured_value: Optional[bool]
+) -> bool:
+    if configured_value is not None:
+        return configured_value
+
+    return environment.strip().lower() in {"local", "beta"}
+
+
 def _is_sensitive_key(key: str) -> bool:
     normalized_key = key.replace("-", "_").lower()
     return any(
@@ -146,8 +155,15 @@ def _initialize_sentry() -> bool:
             StarletteIntegration(),
         ],
         traces_sample_rate=settings.sentry_traces_sample_rate,
+        profile_session_sample_rate=(
+            settings.sentry_profile_session_sample_rate
+        ),
+        profile_lifecycle=settings.sentry_profile_lifecycle,
+        enable_logs=_resolve_sentry_enable_logs(
+            settings.KANG_ENV, settings.sentry_enable_logs
+        ),
         before_send=_sentry_before_send,
-        send_default_pii=False,
+        send_default_pii=settings.sentry_send_default_pii,
     )
     _SENTRY_INITIALIZED = True
     logger.info("Sentry initialized.")

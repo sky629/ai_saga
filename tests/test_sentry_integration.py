@@ -1,6 +1,10 @@
 """Sentry integration tests."""
 
-from app.main import _sentry_before_send, _should_enable_sentry
+from app.main import (
+    _resolve_sentry_enable_logs,
+    _sentry_before_send,
+    _should_enable_sentry,
+)
 
 
 class TestSentryIntegration:
@@ -64,3 +68,12 @@ class TestSentryIntegration:
         )
         assert masked["extra"]["jwt"] == "[Filtered]"
         assert masked["user"]["email"] == "[Filtered]"
+
+    def test_resolve_sentry_enable_logs_by_environment(self):
+        """Enable logs in local/beta by default, disable in prod."""
+        assert _resolve_sentry_enable_logs("local", None) is True
+        assert _resolve_sentry_enable_logs("beta", None) is True
+        assert _resolve_sentry_enable_logs("prod", None) is False
+
+        assert _resolve_sentry_enable_logs("prod", True) is True
+        assert _resolve_sentry_enable_logs("local", False) is False
