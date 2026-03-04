@@ -47,13 +47,13 @@ class AuthCacheAdapter(_CacheClient, AuthCacheInterface):
     async def set_oauth_state(
         self, state_token: str, state_data: Dict[str, Any], expire: int
     ) -> None:
-        key = self._get_key(f"oauth_state:{state_token}")
+        key = f"oauth_state:{state_token}"
         await self.set(key, value=state_data, expire=expire)
 
     async def get_oauth_state(
         self, state_token: str
     ) -> Optional[Dict[str, Any]]:
-        key = self._get_key(f"oauth_state:{state_token}")
+        key = f"oauth_state:{state_token}"
         return await self.get(key)
 
     async def consume_oauth_state(
@@ -72,6 +72,13 @@ class AuthCacheAdapter(_CacheClient, AuthCacheInterface):
             1,
             key,
         )
+        if raw_result is None:
+            return None
+
+        # Lua EVAL responses can be bytes depending on Redis decoder setup.
+        if isinstance(raw_result, (bytes, bytearray, memoryview)):
+            raw_result = bytes(raw_result).decode("utf-8")
+
         return (
             rapidjson.loads(raw_result)
             if isinstance(raw_result, str)
@@ -79,7 +86,7 @@ class AuthCacheAdapter(_CacheClient, AuthCacheInterface):
         )
 
     async def delete_oauth_state(self, state_token: str) -> None:
-        key = self._get_key(f"oauth_state:{state_token}")
+        key = f"oauth_state:{state_token}"
         await self.delete(key)
 
     async def set_google_access_token(
