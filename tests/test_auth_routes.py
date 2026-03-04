@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.auth.application.use_cases.refresh_token import RefreshTokenResult
 from app.auth.dependencies import get_refresh_token_use_case
 
+
 class TestAuthRoutes:
     """Test authentication route endpoints."""
 

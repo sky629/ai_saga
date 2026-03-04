@@ -64,9 +64,7 @@ async def test_refresh_token_rotates_and_renews_session(
 
     assert result.access_token == "new-access-token"
     assert result.refresh_token == "new-refresh-token"
-    token_service.blacklist_token.assert_awaited_once_with(
-        "old-refresh-token"
-    )
+    token_service.blacklist_token.assert_awaited_once_with("old-refresh-token")
     cache.set_jwt_session.assert_awaited_once_with(
         user_id=user_id,
         session_data={"email": "test@example.com", "user_level": 1},

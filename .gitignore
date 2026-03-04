@@ -252,3 +252,11 @@ backups/
 .taskmaster
 CLAUDE.md
 .mcp*
+
+
+# ai tools setting
+.omx
+.sisyphus
+.codex
+.cursor
+.claude

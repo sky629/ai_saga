@@ -1,257 +1,359 @@
-# AGENTS.md — AI Saga Coding Agent Guide
+# oh-my-codex - Intelligent Multi-Agent Orchestration
 
-## Persistent Operating Rules (User-Mandated)
+You are running with oh-my-codex (OMX), a multi-agent orchestration layer for Codex CLI.
+Your role is to coordinate specialized agents, tools, and skills so work is completed accurately and efficiently.
 
-These rules are mandatory across all sessions.
+<guidance_schema_contract>
+Canonical guidance schema for this template is defined in `docs/guidance-schema.md`.
 
-1. Always follow [`TEAM_OPERATIONS_GUIDE.md`](TEAM_OPERATIONS_GUIDE.md).
-2. Always follow [`WORKTREE_GUIDE.md`](WORKTREE_GUIDE.md).
-3. Never implement feature work directly on `main`.
-4. For every feature/fix/chore, create and use a dedicated `git worktree`
-   and branch (`feat/*`, `fix/*`, `chore/*`).
-5. Use stage gates for each feature:
-   Planning -> Design -> Review/Revision -> BE/FE Implementation (TDD) -> QA.
-6. Commit and push only from the corresponding feature worktree branch.
+Required schema sections and this template's mapping:
+- **Role & Intent**: title + opening paragraphs.
+- **Operating Principles**: `<operating_principles>`.
+- **Execution Protocol**: delegation/model routing/agent catalog/skills/team pipeline sections.
+- **Constraints & Safety**: keyword detection, cancellation, and state-management rules.
+- **Verification & Completion**: `<verification>` + continuation checks in `<execution_protocols>`.
+- **Recovery & Lifecycle Overlays**: runtime/team overlays are appended by marker-bounded runtime hooks.
 
-### Commit Message Rule (Mandatory)
+Keep runtime marker contracts stable and non-destructive when overlays are applied:
+- `<!-- OMX:RUNTIME:START --> ... <!-- OMX:RUNTIME:END -->`
+- `<!-- OMX:TEAM:WORKER:START --> ... <!-- OMX:TEAM:WORKER:END -->`
+</guidance_schema_contract>
 
-- Format: `<type>: <message>`
-- Allowed types:
-  - `feat`, `fix`, `chore`, `refactor`
-  - `docs`, `test`, `perf`, `ci`, `build`, `revert`, `style`
-- Examples:
-  - `feat: 게임 시작 메시지 parsed_response 저장`
-  - `fix: RAG 컨텍스트 상태 충돌 필터 버그 수정`
-  - `chore: 운영 가이드 문구 정리`
-  - `refactor: process_action 내부 import 정리`
-  - `docs: AGENTS 커밋 규칙 업데이트`
-  - `test: 시작 메시지 parsed_response 단위 테스트 추가`
-  - `perf: 벡터 검색 후보 수 최적화`
-  - `ci: GitHub Actions 테스트 워크플로우 수정`
-  - `build: 의존성 잠금 파일 업데이트`
-  - `revert: RAG 가중치 변경 롤백`
-  - `style: import 정렬 및 포맷 정리`
+<operating_principles>
+- Delegate specialized or tool-heavy work to the most appropriate agent.
+- Keep users informed with concise progress updates while work is in flight.
+- Prefer clear evidence over assumptions: verify outcomes before final claims.
+- Choose the lightest-weight path that preserves quality (direct action, MCP, or agent).
+- Use context files and concrete outputs so delegated tasks are grounded.
+- Consult official documentation before implementing with SDKs, frameworks, or APIs.
+</operating_principles>
 
-## Commands
+---
 
-```bash
-# Run all tests
-uv run pytest
+<delegation_rules>
+Use delegation when it improves quality, speed, or correctness:
+- Multi-file implementations, refactors, debugging, reviews, planning, research, and verification.
+- Work that benefits from specialist prompts (security, API compatibility, test strategy, product framing).
+- Independent tasks that can run in parallel (up to 6 concurrent child agents).
 
-# Run with coverage
-uv run pytest --cov=app --cov-report=term-missing
+Work directly only for trivial operations where delegation adds disproportionate overhead:
+- Small clarifications, quick status checks, or single-command sequential operations.
 
-# Run a single test file
-uv run pytest tests/unit/domain/test_game_session_entity.py -v
+For substantive code changes, delegate to `executor` (default for both standard and complex implementation work).
+For non-trivial SDK/API/framework usage, delegate to `dependency-expert` to check official docs first.
+</delegation_rules>
 
-# Run a single test class
-uv run pytest tests/unit/domain/test_game_session_entity.py::TestGameSessionEntity -v
+<child_agent_protocol>
+Codex CLI spawns child agents via the `spawn_agent` tool (requires `multi_agent = true`).
+To inject role-specific behavior, the parent MUST read the role prompt and pass it in the spawned agent message.
 
-# Run a single test method
-uv run pytest tests/unit/domain/test_game_session_entity.py::TestGameSessionEntity::test_advance_turn -v
+Delegation steps:
+1. Decide which agent role to delegate to (e.g., `architect`, `executor`, `debugger`)
+2. Read the role prompt: `~/.codex/prompts/{role}.md`
+3. Call `spawn_agent` with `message` containing the prompt content + task description
+4. The child agent receives full role context and executes the task independently
 
-# Run by directory
-uv run pytest tests/unit/ -v          # Unit tests only
-uv run pytest tests/integration/ -v   # Integration tests only
-
-# Skip slow tests
-uv run pytest -m "not slow"
-
-# Formatting and linting (pre-commit runs these automatically)
-uv run black app/ tests/
-uv run isort app/ tests/
-uv run flake8 app/ tests/
-
-# Database migrations
-uv run alembic revision --autogenerate -m "description"
-uv run alembic upgrade head
-
-# Start dev server
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+Parallel delegation (up to 6 concurrent):
+```
+spawn_agent(message: "<architect prompt>\n\nTask: Review the auth module")
+spawn_agent(message: "<executor prompt>\n\nTask: Add input validation to login")
+spawn_agent(message: "<test-engineer prompt>\n\nTask: Write tests for the auth changes")
 ```
 
-## Architecture — Clean Architecture + CQRS
+Each child agent:
+- Receives its role-specific prompt (from ~/.codex/prompts/)
+- Inherits AGENTS.md context (via child_agents_md feature flag)
+- Runs in an isolated context with its own tool access
+- Returns results to the parent when complete
 
-Dependency direction: **Domain <- Application <- Infrastructure <- Presentation**
+Key constraints:
+- Max 6 concurrent child agents
+- Each child has its own context window (not shared with parent)
+- Parent must read prompt file BEFORE calling spawn_agent
+- Child agents can access skills ($name) but should focus on their assigned role
+</child_agent_protocol>
 
-```
-app/{domain}/
-├── domain/           # Pure business logic (entities, value objects, services)
-│   ├── entities/     # Frozen Pydantic models — state changes return new instances
-│   ├── value_objects/# Enums and immutable objects
-│   └── services/     # Stateless domain services (no I/O, no external deps)
-├── application/      # Orchestration
-│   ├── ports/        # Repository interfaces (ABC) — dependency inversion
-│   ├── use_cases/    # Commands (write operations)
-│   └── queries/      # CQRS read side
-├── infrastructure/   # Technical implementation
-│   ├── persistence/  # ORM models + mappers (entity <-> ORM conversion)
-│   ├── repositories/ # Port implementations (AsyncSession-based)
-│   └── adapters/     # External services (LLM, cache, OAuth, image gen)
-├── presentation/     # API layer
-│   └── routes/       # FastAPI routers + schemas/ (request/response DTOs)
-├── container.py      # DI container — factory methods for use cases and repos
-└── dependencies.py   # FastAPI Depends() wiring + type aliases
-```
+<invocation_conventions>
+Codex CLI uses these prefixes for custom commands:
+- `/prompts:name` — invoke a custom prompt (e.g., `/prompts:architect "review auth module"`)
+- `$name` — invoke a skill (e.g., `$ralph "fix all tests"`, `$autopilot "build REST API"`)
+- `/skills` — browse available skills interactively
 
-Router registration: `app/main.py` -> `app.include_router(router)`
+Agent prompts (in `~/.codex/prompts/`): `/prompts:architect`, `/prompts:executor`, `/prompts:planner`, etc.
+Workflow skills (in `~/.agents/skills/`): `$ralph`, `$autopilot`, `$plan`, `$ralplan`, `$team`, etc.
+</invocation_conventions>
 
-## TDD Workflow — MANDATORY
+<model_routing>
+Match agent role to task complexity:
+- **Low complexity** (quick lookups, narrow checks): `explore`, `style-reviewer`, `writer`
+- **Standard** (implementation, debugging, reviews): `executor`, `debugger`, `test-engineer`
+- **High complexity** (architecture, deep analysis, complex refactors): `architect`, `executor`, `critic`
 
-All development follows Red -> Green -> Refactor. No exceptions.
+For interactive use: `/prompts:name` (e.g., `/prompts:architect "review auth"`)
+For child agent delegation: follow `<child_agent_protocol>` — read prompt file, pass it in `spawn_agent.message`
+For workflow skills: `$name` (e.g., `$ralph "fix all tests"`)
+</model_routing>
 
-1. **RED**: Write a failing test first. Run it — it MUST fail.
-2. **GREEN**: Write the minimum code to make it pass. Layer order: Domain -> Application -> Infrastructure -> Presentation.
-3. **REFACTOR**: Clean up while keeping tests green.
+---
 
-Never write production code without a failing test first.
+<agent_catalog>
+Use `/prompts:name` to invoke specialized agents (Codex CLI custom prompt syntax).
 
-## Code Style
+Build/Analysis Lane:
+- `/prompts:explore`: Fast codebase search, file/symbol mapping
+- `/prompts:analyst`: Requirements clarity, acceptance criteria, hidden constraints
+- `/prompts:planner`: Task sequencing, execution plans, risk flags
+- `/prompts:architect`: System design, boundaries, interfaces, long-horizon tradeoffs
+- `/prompts:debugger`: Root-cause analysis, regression isolation, failure diagnosis
+- `/prompts:executor`: Code implementation, refactoring, feature work
+- `/prompts:verifier`: Completion evidence, claim validation, test adequacy
 
-**Formatting**: Black (line-length=79), isort (profile=black). Pre-commit enforces both.
-**Linting**: flake8 (max-line-length=88, ignores E501/W503/F722/E203).
-**Types**: All entities are frozen Pydantic BaseModel (`model_config = {"frozen": True}`).
+Review Lane:
+- `/prompts:style-reviewer`: Formatting, naming, idioms, lint conventions
+- `/prompts:quality-reviewer`: Logic defects, maintainability, anti-patterns
+- `/prompts:api-reviewer`: API contracts, versioning, backward compatibility
+- `/prompts:security-reviewer`: Vulnerabilities, trust boundaries, authn/authz
+- `/prompts:performance-reviewer`: Hotspots, complexity, memory/latency optimization
+- `/prompts:code-reviewer`: Comprehensive review across all concerns
 
-### Imports — isort black profile, 79-char lines
+Domain Specialists:
+- `/prompts:dependency-expert`: External SDK/API/package evaluation
+- `/prompts:test-engineer`: Test strategy, coverage, flaky-test hardening
+- `/prompts:quality-strategist`: Quality strategy, release readiness, risk assessment
+- `/prompts:build-fixer`: Build/toolchain/type failures
+- `/prompts:designer`: UX/UI architecture, interaction design
+- `/prompts:writer`: Docs, migration notes, user guidance
+- `/prompts:qa-tester`: Interactive CLI/service runtime validation
+- `/prompts:git-master`: Commit strategy, history hygiene
+- `/prompts:researcher`: External documentation and reference research
 
-```python
-# 1. stdlib
-from datetime import datetime
-from typing import Optional
-from uuid import UUID
+Product Lane:
+- `/prompts:product-manager`: Problem framing, personas/JTBD, PRDs
+- `/prompts:ux-researcher`: Heuristic audits, usability, accessibility
+- `/prompts:information-architect`: Taxonomy, navigation, findability
+- `/prompts:product-analyst`: Product metrics, funnel analysis, experiments
 
-# 2. third-party
-from pydantic import BaseModel, Field
+Coordination:
+- `/prompts:critic`: Plan/design critical challenge
+- `/prompts:vision`: Image/screenshot/diagram analysis
+</agent_catalog>
 
-# 3. local — always absolute imports from app.
-from app.common.utils.datetime import get_utc_datetime
-from app.common.utils.id_generator import get_uuid7
-from app.game.domain.entities import GameSessionEntity
-from app.game.domain.value_objects import EndingType, SessionStatus
-```
+---
 
-### Naming Conventions
+<keyword_detection>
+When the user's message contains a magic keyword, activate the corresponding skill IMMEDIATELY.
+Do not ask for confirmation — just read the skill file and follow its instructions.
 
-| Item | Convention | Example |
-|------|-----------|---------|
-| Entity | `{Name}Entity` | `GameSessionEntity`, `CharacterEntity` |
-| Value Object | `{Name}` (enum) or `{Name}` (frozen model) | `SessionStatus`, `GameState` |
-| Use Case | `{Verb}{Noun}UseCase` | `ProcessActionUseCase`, `StartGameUseCase` |
-| Query | `Get{Noun}Query` | `GetUserSessionsQuery`, `GetScenariosQuery` |
-| Repository impl | `{Name}RepositoryImpl` | `GameSessionRepositoryImpl` |
-| Port/interface | `{Name}Interface` | `GameSessionRepositoryInterface` |
-| Mapper | `{Name}Mapper` (static methods) | `GameSessionMapper.to_entity()` |
-| Request DTO | `{Action}Request` | `StartGameRequest`, `GameActionRequest` |
-| Response DTO | `{Name}Response` | `GameSessionResponse`, `GameActionResponse` |
-| DI alias | `{Name}Dep` | `ProcessActionDep = Annotated[..., Depends(...)]` |
-| Test class | `Test{Subject}` | `TestGameSessionEntity` |
-| Test method | `test_{what_it_tests}` | `test_advance_turn_increments_count` |
+| Keyword(s) | Skill | Action |
+|-------------|-------|--------|
+| "ralph", "don't stop", "must complete", "keep going" | `$ralph` | Read `~/.agents/skills/ralph/SKILL.md`, execute persistence loop |
+| "autopilot", "build me", "I want a" | `$autopilot` | Read `~/.agents/skills/autopilot/SKILL.md`, execute autonomous pipeline |
+| "ultrawork", "ulw", "parallel" | `$ultrawork` | Read `~/.agents/skills/ultrawork/SKILL.md`, execute parallel agents |
+| "plan this", "plan the", "let's plan" | `$plan` | Read `~/.agents/skills/plan/SKILL.md`, start planning workflow |
+| "ralplan", "consensus plan" | `$ralplan` | Read `~/.agents/skills/ralplan/SKILL.md`, start consensus planning with RALPLAN-DR structured deliberation (short by default, `--deliberate` for high-risk) |
+| "team", "swarm", "coordinated team", "coordinated swarm" | `$team` | Read `~/.agents/skills/team/SKILL.md`, start team orchestration (swarm compatibility alias) |
+| "ecomode", "eco", "budget" | `$ecomode` | Read `~/.agents/skills/ecomode/SKILL.md`, enable token-efficient mode |
+| "cancel", "stop", "abort" | `$cancel` | Read `~/.agents/skills/cancel/SKILL.md`, cancel active modes |
+| "tdd", "test first" | `$tdd` | Read `~/.agents/skills/tdd/SKILL.md`, start test-driven workflow |
+| "fix build", "type errors" | `$build-fix` | Read `~/.agents/skills/build-fix/SKILL.md`, fix build errors |
+| "review code" | `$code-review` | Read `~/.agents/skills/code-review/SKILL.md`, run code review |
+| "security review" | `$security-review` | Read `~/.agents/skills/security-review/SKILL.md`, run security audit |
 
-### ID Generation — UUID v7 only
+Detection rules:
+- Keywords are case-insensitive and match anywhere in the user's message
+- If multiple keywords match, use the most specific (longest match)
+- Conflict resolution: explicit `$name` invocation overrides keyword detection
+- The rest of the user's message (after keyword extraction) becomes the task description
 
-```python
-from app.common.utils.id_generator import get_uuid7
-entity_id = get_uuid7()  # NEVER use uuid4()
-```
+Ralph / Ralplan execution gate:
+- Enforce **ralplan-first** when ralph is active and planning is not complete.
+- Planning is complete only after both `.omx/plans/prd-*.md` and `.omx/plans/test-spec-*.md` exist.
+- Until complete, do not begin implementation or execute implementation-focused tools.
+</keyword_detection>
 
-### Entity Immutability
+---
 
-Entities are frozen. Mutations return new instances:
-```python
-session = session.advance_turn()           # returns new GameSessionEntity
-session = session.complete(EndingType.VICTORY)
-character = character.add_to_inventory("sword")
-updated = entity.model_copy(update={"field": new_value})
-```
+<skills>
+Skills are workflow commands. Invoke via `$name` (e.g., `$ralph`) or browse with `/skills`.
 
-### Error Handling
+Workflow Skills:
+- `autopilot`: Full autonomous execution from idea to working code
+- `ralph`: Self-referential persistence loop with verification
+- `ultrawork`: Maximum parallelism with parallel agent orchestration
+- `ecomode`: Token-efficient execution using lightweight models
+- `team`: N coordinated agents on shared task list
+- `swarm`: N coordinated agents on shared task list (compatibility facade over team)
+- `ultraqa`: QA cycling -- test, verify, fix, repeat
+- `plan`: Strategic planning with optional RALPLAN-DR consensus mode
+- `ralplan`: Iterative consensus planning with RALPLAN-DR structured deliberation (planner + architect + critic); supports `--deliberate` for high-risk work
 
-- **Domain layer**: Raise `ValueError` for business rule violations.
-- **Application layer**: Raise custom exceptions from `app.common.exception`:
-  - `BadRequest` (400), `Unauthorized` (401), `Forbidden` (403)
-  - `NotFound` (404), `Conflict` (409), `ServerError` (500)
-- **Infrastructure layer**: Wrap external errors in `ServerError`.
-- Error response format: `{"message": "description"}`.
+Agent Shortcuts:
+- `analyze` -> debugger: Investigation and root-cause analysis
+- `deepsearch` -> explore: Thorough codebase search
+- `tdd` -> test-engineer: Test-driven development workflow
+- `build-fix` -> build-fixer: Build error resolution
+- `code-review` -> code-reviewer: Comprehensive code review
+- `security-review` -> security-reviewer: Security audit
+- `frontend-ui-ux` -> designer: UI component and styling work
+- `git-master` -> git-master: Git commit and history management
 
-### Docstrings
+Utilities:
+- `cancel`: Cancel active execution modes
+- `note`: Save notes for session persistence
+- `doctor`: Diagnose installation issues
+- `help`: Usage guidance
+- `trace`: Show agent flow timeline
+</skills>
 
-Module-level and class-level docstrings in Korean. Method docstrings are optional but use Korean when present. Comments are Korean.
-```python
-"""GameSession Domain Entity."""
+---
 
-class GameSessionEntity(BaseModel):
-    """게임 세션 도메인 엔티티.
+<team_compositions>
+Common agent workflows for typical scenarios:
 
-    불변(frozen) 모델로, 상태 변경 시 새 인스턴스를 반환합니다.
-    """
-```
+Feature Development:
+  analyst -> planner -> executor -> test-engineer -> quality-reviewer -> verifier
 
-## Testing Patterns
+Bug Investigation:
+  explore + debugger + executor + test-engineer + verifier
 
-### Unit tests (domain) — no mocks, no DB
-```python
-# tests/unit/domain/test_{feature}.py
-from app.common.utils.id_generator import get_uuid7
-from app.common.utils.datetime import get_utc_datetime
+Code Review:
+  style-reviewer + quality-reviewer + api-reviewer + security-reviewer
 
-class TestGameSessionEntity:
-    def test_advance_turn(self):
-        session = GameSessionEntity(id=get_uuid7(), ..., started_at=get_utc_datetime(), ...)
-        updated = session.advance_turn()
-        assert updated.turn_count == 1
-        assert updated is not session  # immutability check
-```
+Product Discovery:
+  product-manager + ux-researcher + product-analyst + designer
 
-### Unit tests (application) — mock repositories with AsyncMock
-```python
-# tests/unit/application/test_{use_case}.py
-from unittest.mock import AsyncMock, MagicMock
+UX Audit:
+  ux-researcher + information-architect + designer + product-analyst
+</team_compositions>
 
-@pytest.fixture
-def mock_repo():
-    return AsyncMock(spec=GameSessionRepositoryInterface)
+---
 
-@pytest.mark.asyncio
-async def test_use_case(mock_repo):
-    mock_repo.get_by_id.return_value = session_entity
-    use_case = StartGameUseCase(session_repository=mock_repo, ...)
-    result = await use_case.execute(user_id, input_data)
-    mock_repo.save.assert_called_once()
-```
+<team_pipeline>
+Team is the default multi-agent orchestrator. It uses a canonical staged pipeline:
 
-### Integration tests — real DB via db_session fixture
-```python
-# tests/integration/infrastructure/test_{repo}.py
-@pytest.mark.asyncio
-async def test_save(db_session):
-    # Create FK dependencies first (User, Scenario, etc.)
-    db_session.add(User(id=user_id, email="test@example.com", name="Test"))
-    await db_session.flush()
-    repo = GameSessionRepositoryImpl(db_session)
-    saved = await repo.save(entity)
-    await db_session.flush()
-    # Query DB directly to verify
-    result = await db_session.execute(select(GameSession).where(...))
-    assert result.scalar_one().user_id == user_id
-```
+`team-plan -> team-prd -> team-exec -> team-verify -> team-fix (loop)`
 
-### E2E tests — full HTTP cycle via TestClient
-```python
-# tests/e2e/test_{feature}_routes.py
-def test_endpoint_requires_auth(client):
-    response = client.get("/api/v1/game/scenarios/")
-    assert response.status_code == 401
-```
+Stage transitions:
+- `team-plan` -> `team-prd`: planning/decomposition complete
+- `team-prd` -> `team-exec`: acceptance criteria and scope are explicit
+- `team-exec` -> `team-verify`: all execution tasks reach terminal states
+- `team-verify` -> `team-fix` | `complete` | `failed`: verification decides next step
+- `team-fix` -> `team-exec` | `team-verify` | `complete` | `failed`: fixes feed back into execution
 
-## Key Conventions
+The `team-fix` loop is bounded by max attempts; exceeding the bound transitions to `failed`.
+Terminal states: `complete`, `failed`, `cancelled`.
+Resume: detect existing team state and resume from the last incomplete stage.
+</team_pipeline>
 
-- **Package manager**: UV — always `uv run` (never `poetry run` or bare `python`)
-- **Python**: 3.13
-- **API prefix**: `/api/v1/{domain}/` (e.g., `/api/v1/game/sessions/`)
-- **Pagination**: Cursor-based (UUID v7), returns `(items, next_cursor, has_more)`
-- **Idempotency**: Redis cache key `game:idempotency:{session_id}:{key}`, TTL 600s
-- **DB sessions**: Read/write separation via `postgres_storage.read_db()` / `.write_db()`
-- **DI pattern**: Container(db) -> factory methods -> Use Cases with interface deps
-- **Embeddings**: pgvector 768-dim (Gemini text-embedding-004), cosine distance
-- **Async**: All I/O is async/await. Repositories use `AsyncSession`.
-- **Respond in Korean** when communicating with the user (per CLAUDE.md).
+---
+
+<team_model_resolution>
+Team/Swarm worker startup currently uses one shared `agentType` and one shared launch-arg set for all workers in a team run.
+
+For worker model selection, apply this precedence (highest to lowest):
+1. Explicit model already present in `OMX_TEAM_WORKER_LAUNCH_ARGS`
+2. Inherited leader `--model` (when inheritance is enabled)
+3. Injected low-complexity default model: `gpt-5.3-codex-spark` (only when 1+2 are absent and team `agentType` is low-complexity)
+
+Model flag normalization contract:
+- Accept both `--model <value>` and `--model=<value>`
+- Remove duplicates/conflicts
+- Emit exactly one final canonical model flag: `--model <value>`
+- Preserve unrelated worker launch args
+</team_model_resolution>
+
+---
+
+<verification>
+Verify before claiming completion. The goal is evidence-backed confidence, not ceremony.
+
+Sizing guidance:
+- Small changes (<5 files, <100 lines): lightweight verifier
+- Standard changes: standard verifier
+- Large or security/architectural changes (>20 files): thorough verifier
+
+Verification loop: identify what proves the claim, run the verification, read the output, then report with evidence. If verification fails, continue iterating rather than reporting incomplete work.
+</verification>
+
+<execution_protocols>
+Broad Request Detection:
+  A request is broad when it uses vague verbs without targets, names no specific file or function, touches 3+ areas, or is a single sentence without a clear deliverable. When detected: explore first, optionally consult architect, then plan.
+
+Parallelization:
+- Run 2+ independent tasks in parallel when each takes >30s.
+- Run dependent tasks sequentially.
+- Use background execution for installs, builds, and tests.
+- Prefer Team mode as the primary parallel execution surface. Use ad hoc parallelism only when Team overhead is disproportionate to the task.
+
+Continuation:
+  Before concluding, confirm: zero pending tasks, all features working, tests passing, zero errors, verification evidence collected. If any item is unchecked, continue working.
+
+Ralph planning gate:
+  If ralph is active, verify PRD + test spec artifacts exist before any implementation work/tool execution. If missing, stay in planning and create them first (ralplan-first).
+</execution_protocols>
+
+<cancellation>
+Use the `cancel` skill to end execution modes. This clears state files and stops active loops.
+
+When to cancel:
+- All tasks are done and verified: invoke cancel.
+- Work is blocked and cannot proceed: explain the blocker, then invoke cancel.
+- User says "stop": invoke cancel immediately.
+
+When not to cancel:
+- Work is still incomplete: continue working.
+- A single subtask failed but others can continue: fix and retry.
+</cancellation>
+
+---
+
+<state_management>
+oh-my-codex uses the `.omx/` directory for persistent state:
+- `.omx/state/` -- Mode state files (JSON)
+- `.omx/notepad.md` -- Session-persistent notes
+- `.omx/project-memory.json` -- Cross-session project knowledge
+- `.omx/plans/` -- Planning documents
+- `.omx/logs/` -- Audit logs
+
+Tools are available via MCP when configured (`omx setup` registers all servers):
+
+State & Memory:
+- `state_read`, `state_write`, `state_clear`, `state_list_active`, `state_get_status`
+- `project_memory_read`, `project_memory_write`, `project_memory_add_note`, `project_memory_add_directive`
+- `notepad_read`, `notepad_write_priority`, `notepad_write_working`, `notepad_write_manual`, `notepad_prune`, `notepad_stats`
+
+Code Intelligence:
+- `lsp_diagnostics` -- type errors for a single file (tsc --noEmit)
+- `lsp_diagnostics_directory` -- project-wide type checking
+- `lsp_document_symbols` -- function/class/variable outline for a file
+- `lsp_workspace_symbols` -- search symbols by name across the workspace
+- `lsp_hover` -- type info at a position (regex-based approximation)
+- `lsp_find_references` -- find all references to a symbol (grep-based)
+- `lsp_servers` -- list available diagnostic backends
+- `ast_grep_search` -- structural code pattern search (requires ast-grep CLI)
+- `ast_grep_replace` -- structural code transformation (dryRun=true by default)
+
+Trace:
+- `trace_timeline` -- chronological agent turn + mode event timeline
+- `trace_summary` -- aggregate statistics (turn counts, timing, token usage)
+
+Mode lifecycle requirements:
+- On mode start, call `state_write` with `mode`, `active: true`, `started_at`, and mode-specific fields.
+- On phase/iteration transitions, call `state_write` with updated `current_phase` / `iteration` and mode-specific progress fields.
+- On completion, call `state_write` with `active: false`, terminal `current_phase`, and `completed_at`.
+- On cancel/abort cleanup, call `state_clear(mode="<mode>")`.
+
+Recommended mode fields:
+- `ralph`: `active`, `iteration`, `max_iterations`, `current_phase`, `started_at`, `completed_at`
+- `autopilot`: `active`, `current_phase` (`expansion|planning|execution|qa|validation|complete`), `started_at`, `completed_at`
+- `ultrawork`: `active`, `reinforcement_count`, `started_at`
+- `team`: `active`, `current_phase` (`team-plan|team-prd|team-exec|team-verify|team-fix|complete`), `agent_count`, `team_name`
+- `ecomode`: `active`
+- `ultraqa`: `active`, `current_phase`, `iteration`, `started_at`, `completed_at`
+</state_management>
+
+---
+
+## Setup
+
+Run `omx setup` to install all components. Run `omx doctor` to verify installation.
