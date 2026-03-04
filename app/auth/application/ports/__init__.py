@@ -126,6 +126,10 @@ class AuthCacheInterface(ABC):
         pass
 
     @abstractmethod
+    async def consume_oauth_state(self, state_token: str) -> Optional[dict]:
+        pass
+
+    @abstractmethod
     async def delete_oauth_state(self, state_token: str) -> None:
         pass
 

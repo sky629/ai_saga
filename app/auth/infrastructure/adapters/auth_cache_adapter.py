@@ -3,6 +3,8 @@
 from typing import Any, Dict, Optional, Union
 from uuid import UUID
 
+import rapidjson
+
 from app.auth.application.ports import AuthCacheInterface
 from app.common.storage.redis import CacheExpire, _CacheClient
 
@@ -53,6 +55,28 @@ class AuthCacheAdapter(_CacheClient, AuthCacheInterface):
     ) -> Optional[Dict[str, Any]]:
         key = self._get_key(f"oauth_state:{state_token}")
         return await self.get(key)
+
+    async def consume_oauth_state(
+        self, state_token: str
+    ) -> Optional[Dict[str, Any]]:
+        key = self._get_key(f"oauth_state:{state_token}")
+        conn = await self.get_connection()
+        raw_result = await conn.eval(
+            """
+            local value = redis.call('GET', KEYS[1])
+            if value then
+                redis.call('DEL', KEYS[1])
+            end
+            return value
+            """,
+            1,
+            key,
+        )
+        return (
+            rapidjson.loads(raw_result)
+            if isinstance(raw_result, str)
+            else None
+        )
 
     async def delete_oauth_state(self, state_token: str) -> None:
         key = self._get_key(f"oauth_state:{state_token}")

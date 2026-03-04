@@ -172,6 +172,7 @@ async def start_game(
         scenario_id=request.scenario_id,
         max_turns=request.max_turns,
     )
+    lock_key = f"game:start:character:{request.character_id}"
 
     if idempotency_key:
         payload = {
@@ -196,7 +197,6 @@ async def start_game(
                 )
             return GameSessionResponse.model_validate(replay_data["response"])
 
-        lock_key = f"game:start:{current_user.id}:{idempotency_key}"
         async with cache_service.lock(lock_key, ttl_ms=20000):
             cached_payload = await cache_service.get(replay_key)
             if cached_payload:
@@ -246,29 +246,30 @@ async def start_game(
             )
     else:
         # No idempotency key, just execute
-        try:
-            result = await use_case.execute(current_user.id, input_data)
-        except ValueError as e:
-            error_msg = str(e).lower()
-            if "active session" in error_msg:
+        async with cache_service.lock(lock_key, ttl_ms=20000):
+            try:
+                result = await use_case.execute(current_user.id, input_data)
+            except ValueError as e:
+                error_msg = str(e).lower()
+                if "active session" in error_msg:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Character already has an active session",
+                    )
+                if "not found" in error_msg:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=str(e),
+                    )
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=str(e),
+                )
+            except IntegrityError:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Character already has an active session",
                 )
-            if "not found" in error_msg:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=str(e),
-                )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e),
-            )
-        except IntegrityError:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Character already has an active session",
-            )
 
     return result
 
@@ -446,18 +447,22 @@ async def generate_illustration(
     session_id: UUID,
     message_id: UUID,
     use_case: GenerateIllustrationDep,
+    cache_service: CacheServiceDep,
     current_user: User = Depends(get_current_user),
 ):
-    try:
-        result = await use_case.execute(
-            current_user.id,
-            GenerateIllustrationInput(
-                session_id=session_id,
-                message_id=message_id,
-            ),
-        )
-    except APIException:
-        raise
+    async with cache_service.lock(
+        f"game:illustration:{message_id}", ttl_ms=20000
+    ):
+        try:
+            result = await use_case.execute(
+                current_user.id,
+                GenerateIllustrationInput(
+                    session_id=session_id,
+                    message_id=message_id,
+                ),
+            )
+        except APIException:
+            raise
     return IllustrationResponse(
         message_id=result.message_id,
         image_url=result.image_url,

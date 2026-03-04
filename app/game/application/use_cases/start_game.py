@@ -115,7 +115,10 @@ class StartGameUseCase:
             session, character, scenario
         )
 
-        # 8. Return response
+        # 8. Commit persisted session/message writes before returning
+        await self._session_repo.commit()
+
+        # 9. Return response
         return GameSessionResponse(
             id=session.id,
             character_id=session.character_id,

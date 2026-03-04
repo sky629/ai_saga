@@ -116,7 +116,15 @@ class HandleOAuthCallbackUseCase:
                 updated_at=now,
                 last_used_at=now,
             )
-            await self._social_repo.save(social_account)
+            try:
+                await self._social_repo.save(social_account)
+            except Exception:
+                # 동시 콜백 요청 경쟁 상황에서 이미 생성된 경우 재조회 후 진행
+                race_social = await self._social_repo.get_by_provider(
+                    input_data.provider, provider_user_id
+                )
+                if race_social is None or race_social.user_id != user.id:
+                    raise
 
         # 5. 마지막 로그인 갱신
         user = user.model_copy(update={"last_login_at": now})

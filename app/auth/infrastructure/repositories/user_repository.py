@@ -62,7 +62,7 @@ class UserRepositoryImpl(UserRepositoryInterface):
             for key, value in updates.items():
                 setattr(orm, key, value)
 
-        await self._db.commit()
+        await self._db.flush()
         await self._db.refresh(orm)
         return UserMapper.to_entity(orm)
 
@@ -75,4 +75,4 @@ class UserRepositoryImpl(UserRepositoryInterface):
             .values(last_login_at=login_at)
         )
         await self._db.execute(stmt)
-        await self._db.commit()
+        await self._db.flush()

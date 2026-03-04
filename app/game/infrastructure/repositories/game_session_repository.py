@@ -127,3 +127,7 @@ class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
             sql_delete(GameSession).where(GameSession.id == session_id)
         )
         await self._db.flush()
+
+    async def commit(self) -> None:
+        """세션 관련 작업 트랜잭션 커밋."""
+        await self._db.commit()

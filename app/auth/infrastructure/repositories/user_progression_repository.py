@@ -40,7 +40,7 @@ class UserProgressionRepositoryImpl(UserProgressionInterface):
     ) -> UserProgressionResult:
         """유저에게 게임 경험치 부여 후 결과 반환."""
         result = await self._db.execute(
-            select(UserModel).where(UserModel.id == user_id)
+            select(UserModel).where(UserModel.id == user_id).with_for_update()
         )
         user_orm = result.scalar_one_or_none()
         if user_orm is None:

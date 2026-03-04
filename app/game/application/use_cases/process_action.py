@@ -4,6 +4,7 @@
 기존 GameService.process_action()의 비즈니스 로직을 분리.
 """
 
+import hashlib
 import json
 import logging
 from typing import Optional, Union
@@ -11,6 +12,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.common.exception import Conflict
 from app.common.utils.datetime import get_utc_datetime
 from app.common.utils.id_generator import get_uuid7
 from app.game.application.ports import (
@@ -111,10 +113,21 @@ class ProcessActionUseCase:
     ) -> ProcessActionResult:
         """유스케이스 실행."""
         # 1. Idempotency Check
+        payload_hash = self._compute_action_payload_hash(input_data.action)
         cache_key = f"game:idempotency:{input_data.session_id}:{input_data.idempotency_key}"
         cached_data = await self._cache.get(cache_key)
         if cached_data:
             data = json.loads(cached_data)
+            cached_payload_hash = data.get("payload_hash")
+            if (
+                cached_payload_hash is not None
+                and cached_payload_hash != payload_hash
+            ):
+                raise Conflict(
+                    message=(
+                        "같은 Idempotency-Key에 다른 요청 본문을 사용할 수 없습니다."
+                    )
+                )
             if data.get("type") == "ending":
                 return ProcessActionResult(
                     response=GameEndingResponse.model_validate(data["data"]),
@@ -198,9 +211,14 @@ class ProcessActionUseCase:
         # 9. Save session state
         await self._session_repo.save(session)
 
-        # 10. Cache response for idempotency
+        # 10. Commit before idempotency cache write
+        await self._session_repo.commit()
+
+        # 11. Cache response for idempotency
         cache_key = f"game:idempotency:{input_data.session_id}:{input_data.idempotency_key}"
-        await self._cache_response(cache_key, response)
+        await self._cache_response(
+            cache_key, response, payload_hash=payload_hash
+        )
 
         return ProcessActionResult(response=response)
 
@@ -668,6 +686,7 @@ class ProcessActionUseCase:
         self,
         cache_key: str,
         response: Union[GameActionResponse, GameEndingResponse],
+        payload_hash: Optional[str] = None,
     ) -> None:
         """응답 캐싱."""
         is_ending = isinstance(response, GameEndingResponse)
@@ -676,9 +695,18 @@ class ProcessActionUseCase:
             "type": "ending" if is_ending else "action",
             "data": response.model_dump(mode="json"),
         }
+        if payload_hash is not None:
+            cache_data["payload_hash"] = payload_hash
         await self._cache.set(
             cache_key, json.dumps(cache_data), ttl_seconds=600
         )
+
+    @staticmethod
+    def _compute_action_payload_hash(action: str) -> str:
+        payload = {"action": action}
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True).encode("utf-8")
+        ).hexdigest()
 
     async def _generate_illustration(
         self,

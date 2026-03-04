@@ -83,7 +83,7 @@ class SocialAccountRepositoryImpl(SocialAccountRepositoryInterface):
             orm.last_used_at = account.last_used_at
             # Other fields typically don't change or require explicit logic
 
-        await self._db.commit()
+        await self._db.flush()
         await self._db.refresh(orm)
         return SocialAccountMapper.to_entity(orm)
 
@@ -93,5 +93,5 @@ class SocialAccountRepositoryImpl(SocialAccountRepositoryInterface):
                 SocialAccountModel.id == account_id
             )
         )
-        await self._db.commit()
+        await self._db.flush()
         return result.rowcount > 0

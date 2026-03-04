@@ -134,6 +134,7 @@ async def test_start_game_success(
 
     # Verify repository calls
     mock_session_repo.save.assert_called_once()
+    mock_session_repo.commit.assert_called_once()
     mock_llm_service.generate_response.assert_called_once()
     mock_message_repo.create.assert_called_once()
 

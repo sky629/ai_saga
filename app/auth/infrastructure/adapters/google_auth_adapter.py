@@ -57,11 +57,10 @@ class GoogleAuthAdapter(OAuthProviderInterface):
         return auth_url, state
 
     async def verify_state(self, state: str) -> bool:
-        state_data = await self._cache.get_oauth_state(state)
+        state_data = await self._cache.consume_oauth_state(state)
         if not state_data:
             return False
-        await self._cache.delete_oauth_state(state)
-        return True
+        return state_data.get("provider") == "google"
 
     async def exchange_code_for_tokens(self, code: str) -> Dict[str, Any]:
         token_data = {

@@ -9,6 +9,7 @@ from app.common.utils.datetime import get_utc_datetime
 from app.common.utils.id_generator import get_uuid7
 from app.game.presentation.routes.game_routes import (
     create_character,
+    generate_illustration,
     start_game,
     submit_action,
 )
@@ -87,6 +88,34 @@ async def test_submit_action_uses_session_scoped_lock_key():
 
 
 @pytest.mark.asyncio
+async def test_generate_illustration_uses_message_scoped_lock_key():
+    session_id = get_uuid7()
+    message_id = get_uuid7()
+    user_id = get_uuid7()
+    lock_mock = Mock(return_value=_noop_lock())
+    cache_service = SimpleNamespace(lock=lock_mock)
+
+    use_case = AsyncMock()
+    use_case.execute.return_value = SimpleNamespace(
+        message_id=message_id,
+        image_url="https://example.com/image.png",
+    )
+
+    await generate_illustration(
+        session_id=session_id,
+        message_id=message_id,
+        use_case=use_case,
+        cache_service=cache_service,  # type: ignore[arg-type]
+        current_user=SimpleNamespace(id=user_id),
+    )
+
+    lock_mock.assert_called_once_with(
+        f"game:illustration:{message_id}",
+        ttl_ms=20000,
+    )
+
+
+@pytest.mark.asyncio
 async def test_start_game_idempotency_replay_returns_cached_response():
     user_id = get_uuid7()
     cache_service = AsyncMock()
@@ -146,6 +175,89 @@ async def test_start_game_idempotency_replay_returns_cached_response():
 
 
 @pytest.mark.asyncio
+async def test_start_game_idempotency_uses_character_scoped_lock_key():
+    user_id = get_uuid7()
+    request = StartGameRequest(
+        character_id=get_uuid7(),
+        scenario_id=get_uuid7(),
+        max_turns=20,
+    )
+    lock_mock = Mock(return_value=_noop_lock())
+    cache_service = AsyncMock()
+    cache_service.lock = lock_mock
+    cache_service.get.return_value = None
+    use_case = AsyncMock()
+    use_case.execute.return_value = GameSessionResponse(
+        id=get_uuid7(),
+        character_id=request.character_id,
+        scenario_id=request.scenario_id,
+        current_location="시작 지점",
+        game_state={},
+        status="active",
+        turn_count=0,
+        max_turns=request.max_turns,
+        ending_type=None,
+        started_at=get_utc_datetime(),
+        last_activity_at=get_utc_datetime(),
+        image_url=None,
+    )
+
+    await start_game(
+        request=request,
+        use_case=use_case,
+        cache_service=cache_service,
+        idempotency_key="idempo-lock",
+        current_user=SimpleNamespace(id=user_id),
+    )
+
+    lock_mock.assert_called_once_with(
+        f"game:start:character:{request.character_id}",
+        ttl_ms=20000,
+    )
+
+
+@pytest.mark.asyncio
+async def test_start_game_without_idempotency_also_uses_character_scoped_lock_key():
+    user_id = get_uuid7()
+    request = StartGameRequest(
+        character_id=get_uuid7(),
+        scenario_id=get_uuid7(),
+        max_turns=20,
+    )
+    lock_mock = Mock(return_value=_noop_lock())
+    cache_service = AsyncMock()
+    cache_service.lock = lock_mock
+    use_case = AsyncMock()
+    use_case.execute.return_value = GameSessionResponse(
+        id=get_uuid7(),
+        character_id=request.character_id,
+        scenario_id=request.scenario_id,
+        current_location="시작 지점",
+        game_state={},
+        status="active",
+        turn_count=0,
+        max_turns=request.max_turns,
+        ending_type=None,
+        started_at=get_utc_datetime(),
+        last_activity_at=get_utc_datetime(),
+        image_url=None,
+    )
+
+    await start_game(
+        request=request,
+        use_case=use_case,
+        cache_service=cache_service,
+        idempotency_key=None,
+        current_user=SimpleNamespace(id=user_id),
+    )
+
+    lock_mock.assert_called_once_with(
+        f"game:start:character:{request.character_id}",
+        ttl_ms=20000,
+    )
+
+
+@pytest.mark.asyncio
 async def test_start_game_idempotency_conflict_for_different_payload():
     from app.common.exception import Conflict
 
@@ -177,6 +289,7 @@ async def test_start_game_maps_active_session_error_to_409():
     user_id = get_uuid7()
     cache_service = AsyncMock()
     cache_service.get.return_value = None
+    cache_service.lock = Mock(return_value=_noop_lock())
     use_case = AsyncMock()
     use_case.execute.side_effect = ValueError(
         "Character already has an active session"

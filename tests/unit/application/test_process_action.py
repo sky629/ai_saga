@@ -3,12 +3,15 @@
 Tests the business logic of action processing with mocked repositories.
 """
 
+import hashlib
+import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
+from app.common.exception import Conflict
 from app.game.application.use_cases.process_action import (
     ProcessActionInput,
     ProcessActionUseCase,
@@ -18,6 +21,7 @@ from app.game.domain.value_objects import SessionStatus
 from app.game.presentation.routes.schemas.response import (
     GameActionResponse,
     GameEndingResponse,
+    GameMessageResponse,
 )
 
 
@@ -659,3 +663,282 @@ class TestProcessActionSecurityAndDeathConsistency:
 
         assert isinstance(result.response, GameEndingResponse)
         assert result.response.ending_type == "defeat"
+
+
+@pytest.mark.asyncio
+class TestProcessActionIdempotencyPayloadHash:
+    @pytest.fixture
+    def user_id(self):
+        return uuid4()
+
+    @pytest.fixture
+    def session_id(self):
+        return uuid4()
+
+    @pytest.fixture
+    def input_data(self, session_id):
+        return ProcessActionInput(
+            session_id=session_id,
+            action="북쪽으로 이동",
+            idempotency_key="idempo-key",
+        )
+
+    @pytest.fixture
+    def action_response(self, session_id):
+        return GameActionResponse(
+            message=GameMessageResponse(
+                id=uuid4(),
+                role="assistant",
+                content="결과",
+                created_at=datetime.now(timezone.utc),
+            ),
+            narrative="결과 내러티브",
+            options=["다음 행동"],
+            turn_count=1,
+            max_turns=10,
+            session_id=session_id,
+        )
+
+    @pytest.fixture
+    def use_case(self):
+        return ProcessActionUseCase(
+            session_repository=AsyncMock(),
+            message_repository=AsyncMock(),
+            character_repository=AsyncMock(),
+            scenario_repository=AsyncMock(),
+            llm_service=AsyncMock(),
+            cache_service=AsyncMock(),
+            embedding_service=AsyncMock(),
+        )
+
+    def _payload_hash(self, action: str) -> str:
+        return hashlib.sha256(
+            json.dumps({"action": action}, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+
+    async def test_execute_raises_conflict_when_cached_payload_hash_mismatch(
+        self, use_case, input_data, action_response, user_id
+    ):
+        use_case._cache.get.return_value = json.dumps(
+            {
+                "type": "action",
+                "payload_hash": "different-hash",
+                "data": action_response.model_dump(mode="json"),
+            }
+        )
+
+        with pytest.raises(Conflict):
+            await use_case.execute(user_id, input_data)
+
+    async def test_execute_returns_cached_when_payload_hash_matches(
+        self, use_case, input_data, action_response, user_id
+    ):
+        use_case._cache.get.return_value = json.dumps(
+            {
+                "type": "action",
+                "payload_hash": self._payload_hash(input_data.action),
+                "data": action_response.model_dump(mode="json"),
+            }
+        )
+
+        result = await use_case.execute(user_id, input_data)
+
+        assert result.is_cached is True
+        assert isinstance(result.response, GameActionResponse)
+        assert result.response.narrative == "결과 내러티브"
+        use_case._session_repo.get_by_id.assert_not_called()
+
+    async def test_execute_caches_response_with_payload_hash(
+        self, use_case, input_data, action_response, user_id
+    ):
+        now = datetime.now(timezone.utc)
+        session = GameSessionEntity(
+            id=input_data.session_id,
+            user_id=user_id,
+            character_id=uuid4(),
+            scenario_id=uuid4(),
+            current_location="Forest",
+            game_state={},
+            status=SessionStatus.ACTIVE,
+            turn_count=0,
+            max_turns=10,
+            ending_type=None,
+            started_at=now,
+            last_activity_at=now,
+        )
+        use_case._cache.get.return_value = None
+        use_case._session_repo.get_by_id.return_value = session
+        use_case._embedding.generate_embedding.return_value = [0.1, 0.2, 0.3]
+        use_case._message_repo.get_recent_messages.return_value = []
+        use_case._message_repo.get_similar_messages.return_value = []
+        use_case._handle_normal_turn = AsyncMock(
+            return_value=(session.advance_turn(), action_response)
+        )
+
+        await use_case.execute(user_id, input_data)
+
+        use_case._cache.set.assert_called_once()
+        cache_payload = json.loads(use_case._cache.set.call_args.args[1])
+        assert cache_payload["payload_hash"] == self._payload_hash(
+            input_data.action
+        )
+
+
+@pytest.mark.asyncio
+class TestProcessActionCommitOrdering:
+    async def test_execute_commits_before_cache_set(self):
+        user_id = uuid4()
+        session_id = uuid4()
+        now = datetime.now(timezone.utc)
+        session = GameSessionEntity(
+            id=session_id,
+            user_id=user_id,
+            character_id=uuid4(),
+            scenario_id=uuid4(),
+            current_location="Forest",
+            game_state={},
+            status=SessionStatus.ACTIVE,
+            turn_count=0,
+            max_turns=10,
+            ending_type=None,
+            started_at=now,
+            last_activity_at=now,
+        )
+
+        session_repo = AsyncMock()
+        session_repo.get_by_id.return_value = session
+        session_repo.save.return_value = session
+
+        message_repo = AsyncMock()
+        message_repo.get_recent_messages.return_value = []
+        message_repo.get_similar_messages.return_value = []
+
+        character_repo = AsyncMock()
+        character = MagicMock()
+        character.name = "Hero"
+        character.stats.level = 1
+        character_repo.get_by_id.return_value = character
+
+        scenario_repo = AsyncMock()
+        scenario = MagicMock()
+        scenario.name = "Scenario"
+        scenario.difficulty = "normal"
+        scenario_repo.get_by_id.return_value = scenario
+
+        llm_service = AsyncMock()
+        llm_service.generate_response.return_value = AsyncMock(
+            content="계속 진행합니다.",
+            usage=AsyncMock(total_tokens=10),
+        )
+
+        cache_service = AsyncMock()
+        cache_service.get.return_value = None
+
+        call_order: list[str] = []
+
+        async def commit_side_effect():
+            call_order.append("commit")
+
+        async def cache_set_side_effect(*args, **kwargs):
+            call_order.append("cache_set")
+
+        session_repo.commit.side_effect = commit_side_effect
+        cache_service.set.side_effect = cache_set_side_effect
+
+        embedding_service = AsyncMock()
+        embedding_service.generate_embedding.return_value = [0.1] * 768
+
+        use_case = ProcessActionUseCase(
+            session_repository=session_repo,
+            message_repository=message_repo,
+            character_repository=character_repo,
+            scenario_repository=scenario_repo,
+            llm_service=llm_service,
+            cache_service=cache_service,
+            embedding_service=embedding_service,
+        )
+
+        await use_case.execute(
+            user_id,
+            ProcessActionInput(
+                session_id=session_id,
+                action="주변을 탐색한다",
+                idempotency_key="commit-order-key",
+            ),
+        )
+
+        assert call_order == ["commit", "cache_set"]
+
+    async def test_execute_does_not_cache_when_commit_fails(self):
+        user_id = uuid4()
+        session_id = uuid4()
+        now = datetime.now(timezone.utc)
+        session = GameSessionEntity(
+            id=session_id,
+            user_id=user_id,
+            character_id=uuid4(),
+            scenario_id=uuid4(),
+            current_location="Forest",
+            game_state={},
+            status=SessionStatus.ACTIVE,
+            turn_count=0,
+            max_turns=10,
+            ending_type=None,
+            started_at=now,
+            last_activity_at=now,
+        )
+
+        session_repo = AsyncMock()
+        session_repo.get_by_id.return_value = session
+        session_repo.save.return_value = session
+        session_repo.commit.side_effect = RuntimeError("commit failed")
+
+        message_repo = AsyncMock()
+        message_repo.get_recent_messages.return_value = []
+        message_repo.get_similar_messages.return_value = []
+
+        character_repo = AsyncMock()
+        character = MagicMock()
+        character.name = "Hero"
+        character.stats.level = 1
+        character_repo.get_by_id.return_value = character
+
+        scenario_repo = AsyncMock()
+        scenario = MagicMock()
+        scenario.name = "Scenario"
+        scenario.difficulty = "normal"
+        scenario_repo.get_by_id.return_value = scenario
+
+        llm_service = AsyncMock()
+        llm_service.generate_response.return_value = AsyncMock(
+            content="계속 진행합니다.",
+            usage=AsyncMock(total_tokens=10),
+        )
+
+        cache_service = AsyncMock()
+        cache_service.get.return_value = None
+
+        embedding_service = AsyncMock()
+        embedding_service.generate_embedding.return_value = [0.1] * 768
+
+        use_case = ProcessActionUseCase(
+            session_repository=session_repo,
+            message_repository=message_repo,
+            character_repository=character_repo,
+            scenario_repository=scenario_repo,
+            llm_service=llm_service,
+            cache_service=cache_service,
+            embedding_service=embedding_service,
+        )
+
+        with pytest.raises(RuntimeError, match="commit failed"):
+            await use_case.execute(
+                user_id,
+                ProcessActionInput(
+                    session_id=session_id,
+                    action="주변을 탐색한다",
+                    idempotency_key="commit-fail-key",
+                ),
+            )
+
+        cache_service.set.assert_not_called()

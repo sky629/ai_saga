@@ -43,6 +43,11 @@ class GameSessionRepositoryInterface(ABC):
         """세션 삭제."""
         pass
 
+    @abstractmethod
+    async def commit(self) -> None:
+        """세션 관련 트랜잭션 커밋."""
+        pass
+
 
 class CharacterRepositoryInterface(ABC):
     """캐릭터 저장소 인터페이스."""
