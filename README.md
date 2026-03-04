@@ -62,6 +62,8 @@ uv run alembic upgrade head
 uv run uvicorn app.main:app --reload
 ```
 
+> 실행 규칙: 이 프로젝트의 Python 관련 명령은 `uv run ...`으로 실행합니다.
+
 ## 🎯 API 문서
 - **Swagger UI**: http://localhost:8000/api/docs/
 - **Health Check**: http://localhost:8000/api/ping/

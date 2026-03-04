@@ -49,11 +49,11 @@ repos:
       - id: debug-statements
         name: Check for debug statements
 
-  # 4. Commit message rule
+  # 4. Commit message rule (한국어)
   - repo: local
     hooks:
-      - id: commit-msg-convention
-        name: Commit message convention
-        entry: '^(feat|fix|chore|refactor|docs|test|perf|ci|build|revert|style): .+'
-        language: pygrep
+      - id: commit-msg-korean
+        name: Commit message must be Korean
+        entry: uv run python scripts/hooks/validate_commit_msg.py
+        language: system
         stages: [commit-msg]
