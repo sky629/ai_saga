@@ -30,11 +30,18 @@ class ScenarioRepositoryImpl(ScenarioRepositoryInterface):
 
         return ScenarioMapper.to_entity(orm)
 
-    async def get_all_active(self) -> list[ScenarioEntity]:
-        """모든 활성 시나리오 조회."""
-        result = await self._db.execute(
-            select(Scenario).where(Scenario.is_active.is_(True))
-        )
+    async def get_all(self, active_only: bool = True) -> list[ScenarioEntity]:
+        """시나리오 목록 조회."""
+        query = select(Scenario)
+        if active_only:
+            query = query.where(Scenario.is_active.is_(True))
+        query = query.order_by(Scenario.name)
+
+        result = await self._db.execute(query)
         orms = result.scalars().all()
 
         return [ScenarioMapper.to_entity(orm) for orm in orms]
+
+    async def get_all_active(self) -> list[ScenarioEntity]:
+        """레거시 호환 메서드: 활성 시나리오 조회."""
+        return await self.get_all(active_only=True)

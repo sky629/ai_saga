@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import __version__
-from app.auth.presentation.routes.auth import auth_public_router_v1
+from app.auth.presentation.routes.auth_routes import auth_public_router_v1
 from app.common.exception import APIException
 from app.common.logging import (
     CONSOLE_LOGGING_CONFIG,

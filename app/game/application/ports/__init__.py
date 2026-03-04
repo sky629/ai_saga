@@ -4,6 +4,8 @@
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime
 from typing import AsyncContextManager, Optional
 from uuid import UUID
 
@@ -31,6 +33,17 @@ class GameSessionRepositoryInterface(ABC):
         self, character_id: UUID
     ) -> Optional[GameSessionEntity]:
         """캐릭터의 활성 세션 조회."""
+        pass
+
+    @abstractmethod
+    async def list_by_user(
+        self,
+        user_id: UUID,
+        status_filter: Optional[str] = None,
+        limit: int = 20,
+        cursor: Optional[UUID] = None,
+    ) -> list["UserSessionReadModel"]:
+        """사용자 세션 목록 조회."""
         pass
 
     @abstractmethod
@@ -82,8 +95,8 @@ class ScenarioRepositoryInterface(ABC):
         pass
 
     @abstractmethod
-    async def get_all_active(self) -> list[ScenarioEntity]:
-        """모든 활성 시나리오 조회."""
+    async def get_all(self, active_only: bool = True) -> list[ScenarioEntity]:
+        """시나리오 목록 조회."""
         pass
 
 
@@ -100,6 +113,26 @@ class GameMessageRepositoryInterface(ABC):
         self, session_id: UUID, limit: int = 20
     ) -> list[GameMessageEntity]:
         """최근 메시지 조회."""
+        pass
+
+    @abstractmethod
+    async def get_messages(
+        self,
+        session_id: UUID,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[GameMessageEntity]:
+        """세션 메시지 조회."""
+        pass
+
+    @abstractmethod
+    async def get_messages_with_cursor(
+        self,
+        session_id: UUID,
+        limit: int = 50,
+        cursor: Optional[UUID] = None,
+    ) -> tuple[list[GameMessageEntity], Optional[UUID], bool]:
+        """Cursor 기반 세션 메시지 조회."""
         pass
 
     @abstractmethod
@@ -188,6 +221,22 @@ class ImageGenerationServiceInterface(ABC):
             생성된 이미지의 공개 URL, 실패 시 None
         """
         pass
+
+
+@dataclass(frozen=True)
+class UserSessionReadModel:
+    """사용자 세션 목록 조회 모델."""
+
+    id: UUID
+    character_name: str
+    scenario_name: str
+    status: str
+    turn_count: int
+    max_turns: int
+    started_at: datetime
+    last_activity_at: datetime
+    ending_type: Optional[str]
+    character: CharacterEntity
 
 
 class UserProgressionResult(BaseModel):

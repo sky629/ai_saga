@@ -93,7 +93,7 @@ class AuthContainer:
         )
 
     def get_user_query(self) -> GetUserQuery:
-        return GetUserQuery(self._db)
+        return GetUserQuery(self.user_repository())
 
     def get_social_accounts_query(self) -> GetSocialAccountsQuery:
         return GetSocialAccountsQuery(self.social_repo())

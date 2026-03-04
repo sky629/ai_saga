@@ -8,14 +8,10 @@ from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from app.game.infrastructure.persistence.mappers import CharacterMapper
-from app.game.infrastructure.persistence.models.game_models import (
-    Character,
-    GameSession,
+from app.game.application.ports import (
+    GameSessionRepositoryInterface,
+    UserSessionReadModel,
 )
 
 
@@ -42,8 +38,8 @@ class GetUserSessionsQuery:
     CQRS Query: 읽기 전용, 상태 변경 없음.
     """
 
-    def __init__(self, db: AsyncSession):
-        self._db = db
+    def __init__(self, session_repo: GameSessionRepositoryInterface):
+        self._session_repo = session_repo
 
     async def execute(
         self,
@@ -53,73 +49,14 @@ class GetUserSessionsQuery:
         cursor: Optional[UUID] = None,
     ) -> list[SessionListItem]:
         """사용자의 게임 세션 목록 조회."""
-        # 사용자의 캐릭터 ID 조회
-        char_result = await self._db.execute(
-            select(Character.id).where(Character.user_id == user_id)
-        )
-        character_ids = [row[0] for row in char_result.fetchall()]
-
-        if not character_ids:
-            return []
-
-        # 세션 조회
-        query = (
-            select(GameSession)
-            .options(
-                selectinload(GameSession.character),
-                selectinload(GameSession.scenario),
-            )
-            .where(GameSession.character_id.in_(character_ids))
-            .order_by(
-                GameSession.last_activity_at.desc(), GameSession.id.desc()
-            )
+        sessions = await self._session_repo.list_by_user(
+            user_id=user_id,
+            status_filter=status_filter,
+            limit=limit,
+            cursor=cursor,
         )
 
-        # Cursor 기반 필터링
-        if cursor:
-            # cursor보다 오래된 세션만 조회
-            cursor_session = await self._db.execute(
-                select(GameSession).where(GameSession.id == cursor)
-            )
-            cursor_obj = cursor_session.scalar_one_or_none()
-            if cursor_obj:
-                query = query.where(
-                    (
-                        GameSession.last_activity_at
-                        < cursor_obj.last_activity_at
-                    )
-                    | (
-                        (
-                            GameSession.last_activity_at
-                            == cursor_obj.last_activity_at
-                        )
-                        & (GameSession.id < cursor)
-                    )
-                )
-
-        if status_filter:
-            query = query.where(GameSession.status == status_filter)
-
-        query = query.limit(limit + 1)  # +1로 has_more 확인
-
-        result = await self._db.execute(query)
-        sessions = result.scalars().all()
-
-        return [
-            SessionListItem(
-                id=s.id,
-                character_name=s.character.name,
-                scenario_name=s.scenario.name,
-                status=s.status,
-                turn_count=s.turn_count,
-                max_turns=s.max_turns,
-                started_at=s.started_at,
-                last_activity_at=s.last_activity_at,
-                ending_type=s.ending_type,
-                character=CharacterMapper.to_entity(s.character),
-            )
-            for s in sessions
-        ]
+        return [self._to_list_item(session) for session in sessions]
 
     async def get_active_session(
         self, user_id: UUID
@@ -127,3 +64,18 @@ class GetUserSessionsQuery:
         """사용자의 활성 세션 조회."""
         sessions = await self.execute(user_id, status_filter="active", limit=1)
         return sessions[0] if sessions else None
+
+    @staticmethod
+    def _to_list_item(session: UserSessionReadModel) -> SessionListItem:
+        return SessionListItem(
+            id=session.id,
+            character_name=session.character_name,
+            scenario_name=session.scenario_name,
+            status=session.status,
+            turn_count=session.turn_count,
+            max_turns=session.max_turns,
+            started_at=session.started_at,
+            last_activity_at=session.last_activity_at,
+            ending_type=session.ending_type,
+            character=session.character,
+        )

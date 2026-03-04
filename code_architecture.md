@@ -20,6 +20,28 @@
 | `migrations/` | Alembic 마이그레이션 스크립트 |
 | `tests/` | 단위/통합/e2e 테스트 |
 
+### 2.1 디렉토리 구조/네이밍 일반성 점검 (2026-03-04)
+
+현재 구조는 Python FastAPI + Clean Architecture 프로젝트에서 **일반적으로 사용되는 형태**와 대체로 일치한다.
+
+#### 구조 평가
+- 상위 계층(`app`, `config`, `migrations`, `tests`, `scripts`) 분리가 명확해 온보딩 난이도가 낮다.
+- 도메인 모듈(`auth`, `game`) 내부가 `domain/application/infrastructure/presentation`으로 정리되어 확장에 유리하다.
+- 테스트도 `unit/integration/e2e`로 분리되어 있어 보편적인 테스트 전략과 맞는다.
+
+#### 네이밍 평가
+- Python 코드/디렉토리명은 대부분 `snake_case`를 지켜 일관성이 좋다.
+- 의미 단위 네이밍(`use_cases`, `value_objects`, `repositories`)도 역할 기반으로 명확하다.
+
+#### 개선 권장(우선순위 낮음)
+1. 스크립트 네이밍 스타일 통일
+   - 현재 `start-dev.sh`(kebab-case)와 `run_local.sh`, `verify_game_flow.sh`(snake_case)가 혼재
+   - 한 스타일로 통일하면 검색/자동화 규칙 작성이 쉬워진다.
+2. 라우트 파일명 패턴 통일(완료: 2026-03-04)
+   - `app/auth/presentation/routes/auth_routes.py`로 통일했다.
+3. 운영 보조 디렉토리 목적 문서화
+   - `.omx`, `.sisyphus` 같은 운영/오케스트레이션 디렉토리를 README에 한 줄 설명하면 신규 기여자가 혼동하지 않는다.
+
 ## 3. 런타임 흐름
 
 1. `app/main.py`에서 FastAPI 앱 생성
@@ -40,6 +62,8 @@
 - 유스케이스 실행 흐름 조율
 - Port(인터페이스) 의존
 - Command/Query 분리(CQRS)
+- Query 클래스는 DB에 직접 접근하지 않고 Repository 포트를 통해 조회를 위임
+- DI에서 read/write DB 세션을 분리 주입해 CQRS 읽기/쓰기 경로를 유지
 
 ### 4.3 Infrastructure
 - DB/Redis/외부 API 구현
@@ -115,7 +139,7 @@
 
 | 파일 | 책임(1줄) |
 | --- | --- |
-| `app/auth/presentation/routes/auth.py` | Auth HTTP 엔드포인트 정의 |
+| `app/auth/presentation/routes/auth_routes.py` | Auth HTTP 엔드포인트 정의 |
 | `app/auth/presentation/routes/schemas/request.py` | Auth 요청 DTO 정의 |
 | `app/auth/presentation/routes/schemas/response.py` | Auth 응답 DTO 정의 |
 | `app/auth/container.py` | Auth 의존성 조립(팩토리) |
@@ -216,4 +240,4 @@
 3. `app/game/application/use_cases/process_action.py` (핵심 유스케이스)
 4. `app/game/domain/services/game_master_service.py` (도메인 규칙)
 5. `app/game/infrastructure/repositories/*.py` (영속화 방식)
-6. `app/auth/presentation/routes/auth.py` (인증 흐름)
+6. `app/auth/presentation/routes/auth_routes.py` (인증 흐름)

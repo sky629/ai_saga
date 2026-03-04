@@ -7,12 +7,9 @@ from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.game.application.ports import ScenarioRepositoryInterface
 from app.game.domain.entities import ScenarioEntity
-from app.game.infrastructure.persistence.mappers import ScenarioMapper
-from app.game.infrastructure.persistence.models.game_models import Scenario
 
 
 class ScenarioListItem(BaseModel):
@@ -37,30 +34,22 @@ class GetScenariosQuery:
     CQRS Query: 읽기 전용, 상태 변경 없음.
     """
 
-    def __init__(self, db: AsyncSession):
-        self._db = db
+    def __init__(self, scenario_repo: ScenarioRepositoryInterface):
+        self._scenario_repo = scenario_repo
 
     async def execute(
         self, active_only: bool = True
     ) -> list[ScenarioListItem]:
         """활성 시나리오 목록 조회."""
-        query = select(Scenario)
-
-        if active_only:
-            query = query.where(Scenario.is_active.is_(True))
-
-        query = query.order_by(Scenario.name)
-
-        result = await self._db.execute(query)
-        scenarios = result.scalars().all()
+        scenarios = await self._scenario_repo.get_all(active_only=active_only)
 
         return [
             ScenarioListItem(
                 id=s.id,
                 name=s.name,
                 description=s.description,
-                genre=s.genre,
-                difficulty=s.difficulty,
+                genre=s.genre.value,
+                difficulty=s.difficulty.value,
                 max_turns=s.max_turns,
                 world_setting=s.world_setting,
                 initial_location=s.initial_location,
@@ -71,12 +60,4 @@ class GetScenariosQuery:
 
     async def get_by_id(self, scenario_id: UUID) -> Optional[ScenarioEntity]:
         """ID로 시나리오 조회."""
-        result = await self._db.execute(
-            select(Scenario).where(Scenario.id == scenario_id)
-        )
-        orm = result.scalar_one_or_none()
-
-        if orm is None:
-            return None
-
-        return ScenarioMapper.to_entity(orm)
+        return await self._scenario_repo.get_by_id(scenario_id)

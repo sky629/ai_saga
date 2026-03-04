@@ -10,14 +10,13 @@ from uuid import UUID
 import rapidjson
 from pydantic import BaseModel, ConfigDict
 from redis.asyncio import Redis
-from sqlalchemy import desc, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.exception import Forbidden
-from app.game.infrastructure.persistence.models.game_models import (
-    GameMessage,
-    GameSession,
+from app.game.application.ports import (
+    GameMessageRepositoryInterface,
+    GameSessionRepositoryInterface,
 )
+from app.game.domain.entities import GameMessageEntity
 
 
 class MessageHistoryItem(BaseModel):
@@ -52,8 +51,14 @@ class GetSessionHistoryQuery:
     CQRS Query: 읽기 전용, 상태 변경 없음.
     """
 
-    def __init__(self, db: AsyncSession, redis: Optional[Redis] = None):
-        self._db = db
+    def __init__(
+        self,
+        session_repo: GameSessionRepositoryInterface,
+        message_repo: GameMessageRepositoryInterface,
+        redis: Optional[Redis] = None,
+    ):
+        self._session_repo = session_repo
+        self._message_repo = message_repo
         self._redis = redis
 
     async def execute(
@@ -64,44 +69,26 @@ class GetSessionHistoryQuery:
         offset: int = 0,
     ) -> Optional[SessionHistoryResult]:
         """세션 히스토리 조회."""
-        # 세션 조회
-        session_result = await self._db.execute(
-            select(GameSession).where(GameSession.id == session_id)
-        )
-        session = session_result.scalar_one_or_none()
+        session = await self._session_repo.get_by_id(session_id)
 
         if session is None:
             return None
         if session.user_id != user_id:
             raise Forbidden(message="해당 세션에 접근할 권한이 없습니다.")
 
-        # 메시지 조회
-        messages_result = await self._db.execute(
-            select(GameMessage)
-            .where(GameMessage.session_id == session_id)
-            .order_by(GameMessage.created_at)
-            .offset(offset)
-            .limit(limit)
+        messages = await self._message_repo.get_messages(
+            session_id=session_id,
+            limit=limit,
+            offset=offset,
         )
-        messages = messages_result.scalars().all()
 
         return SessionHistoryResult(
             session_id=session.id,
             turn_count=session.turn_count,
             max_turns=session.max_turns,
-            status=session.status,
+            status=session.status.value,
             current_location=session.current_location,
-            messages=[
-                MessageHistoryItem(
-                    id=m.id,
-                    role=m.role,
-                    content=m.content,
-                    created_at=m.created_at,
-                    parsed_response=m.parsed_response,
-                    image_url=m.image_url,
-                )
-                for m in messages
-            ],
+            messages=[self._to_message_item(message) for message in messages],
         )
 
     async def get_recent_messages(
@@ -110,26 +97,11 @@ class GetSessionHistoryQuery:
         limit: int = 10,
     ) -> list[MessageHistoryItem]:
         """최근 메시지만 조회."""
-        result = await self._db.execute(
-            select(GameMessage)
-            .where(GameMessage.session_id == session_id)
-            .order_by(desc(GameMessage.created_at))
-            .limit(limit)
+        messages = await self._message_repo.get_recent_messages(
+            session_id=session_id,
+            limit=limit,
         )
-        messages = result.scalars().all()
-
-        # 시간순으로 정렬
-        return [
-            MessageHistoryItem(
-                id=m.id,
-                role=m.role,
-                content=m.content,
-                created_at=m.created_at,
-                parsed_response=m.parsed_response,
-                image_url=m.image_url,
-            )
-            for m in reversed(list(messages))
-        ]
+        return [self._to_message_item(message) for message in messages]
 
     async def execute_with_cursor(
         self,
@@ -151,7 +123,7 @@ class GetSessionHistoryQuery:
 
         # 최신 메시지 조회 시 캐시 우회
         if cursor is None or self._redis is None:
-            return await self._fetch_from_db(session_id, limit, cursor)
+            return await self._read_with_cursor(session_id, limit, cursor)
 
         # 과거 메시지 조회 시 캐시 사용
         cache_key = (
@@ -169,7 +141,7 @@ class GetSessionHistoryQuery:
             )
 
         # 2. 캐시 미스 → DB 조회
-        messages, next_cursor, has_more = await self._fetch_from_db(
+        messages, next_cursor, has_more = await self._read_with_cursor(
             session_id, limit, cursor
         )
 
@@ -190,67 +162,38 @@ class GetSessionHistoryQuery:
     async def _validate_session_ownership(
         self, session_id: UUID, user_id: UUID
     ) -> None:
-        session_result = await self._db.execute(
-            select(GameSession).where(GameSession.id == session_id)
-        )
-        session = session_result.scalar_one_or_none()
+        session = await self._session_repo.get_by_id(session_id)
         if session is None:
             return
         if session.user_id != user_id:
             raise Forbidden(message="해당 세션에 접근할 권한이 없습니다.")
 
-    async def _fetch_from_db(
+    async def _read_with_cursor(
         self,
         session_id: UUID,
         limit: int,
         cursor: Optional[UUID],
     ) -> tuple[list[MessageHistoryItem], Optional[UUID], bool]:
-        """DB에서 메시지 조회 (실제 쿼리 로직)."""
-        # 메시지 조회 (최신 순, cursor보다 오래된 것만)
-        query = (
-            select(GameMessage)
-            .where(GameMessage.session_id == session_id)
-            .order_by(GameMessage.created_at.desc(), GameMessage.id.desc())
+        messages, next_cursor, has_more = (
+            await self._message_repo.get_messages_with_cursor(
+                session_id=session_id,
+                limit=limit,
+                cursor=cursor,
+            )
+        )
+        return (
+            [self._to_message_item(message) for message in messages],
+            next_cursor,
+            has_more,
         )
 
-        # Cursor 필터링
-        if cursor:
-            cursor_msg = await self._db.execute(
-                select(GameMessage).where(GameMessage.id == cursor)
-            )
-            cursor_obj = cursor_msg.scalar_one_or_none()
-            if cursor_obj:
-                query = query.where(
-                    (GameMessage.created_at < cursor_obj.created_at)
-                    | (
-                        (GameMessage.created_at == cursor_obj.created_at)
-                        & (GameMessage.id < cursor)
-                    )
-                )
-
-        query = query.limit(limit + 1)
-        result = await self._db.execute(query)
-        messages = result.scalars().all()
-
-        # has_more 확인
-        has_more = len(messages) > limit
-        if has_more:
-            messages = messages[:limit]
-
-        # next_cursor 계산
-        next_cursor = messages[-1].id if messages and has_more else None
-
-        # DTO 변환
-        items = [
-            MessageHistoryItem(
-                id=m.id,
-                role=m.role,
-                content=m.content,
-                created_at=m.created_at,
-                parsed_response=m.parsed_response,
-                image_url=m.image_url,
-            )
-            for m in messages
-        ]
-
-        return items, next_cursor, has_more
+    @staticmethod
+    def _to_message_item(message: GameMessageEntity) -> MessageHistoryItem:
+        return MessageHistoryItem(
+            id=message.id,
+            role=message.role.value,
+            content=message.content,
+            created_at=message.created_at,
+            parsed_response=message.parsed_response,
+            image_url=message.image_url,
+        )

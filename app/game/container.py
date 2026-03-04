@@ -199,20 +199,24 @@ class GameContainer:
 
     def get_scenarios_query(self):
         """시나리오 목록 조회 쿼리."""
-        return GetScenariosQuery(self._db)
+        return GetScenariosQuery(self.scenario_repository())
 
     def get_user_sessions_query(self):
         """사용자 세션 목록 조회 쿼리."""
-        return GetUserSessionsQuery(self._db)
+        return GetUserSessionsQuery(self.session_repository())
 
     async def get_session_history_query(self):
         """세션 히스토리 조회 쿼리."""
         redis = await pools.get_connection()
-        return GetSessionHistoryQuery(self._db, redis)
+        return GetSessionHistoryQuery(
+            self.session_repository(),
+            self.message_repository(),
+            redis,
+        )
 
     def get_characters_query(self):
         """캐릭터 목록 조회 쿼리."""
-        return GetCharactersQuery(self._db)
+        return GetCharactersQuery(self.character_repository())
 
     def get_session_query(self):
         """게임 세션 단건 조회 쿼리."""

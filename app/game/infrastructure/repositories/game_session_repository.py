@@ -9,10 +9,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.game.application.ports import GameSessionRepositoryInterface
+from app.game.application.ports import (
+    GameSessionRepositoryInterface,
+    UserSessionReadModel,
+)
 from app.game.domain.entities import GameSessionEntity
-from app.game.infrastructure.persistence.mappers import GameSessionMapper
+from app.game.infrastructure.persistence.mappers import (
+    CharacterMapper,
+    GameSessionMapper,
+)
 from app.game.infrastructure.persistence.models.game_models import (
+    Character,
     GameMessage,
     GameSession,
 )
@@ -63,6 +70,65 @@ class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
             return None
 
         return GameSessionMapper.to_entity(orm)
+
+    async def list_by_user(
+        self,
+        user_id: UUID,
+        status_filter: Optional[str] = None,
+        limit: int = 20,
+        cursor: Optional[UUID] = None,
+    ) -> list[UserSessionReadModel]:
+        """사용자 세션 목록 조회."""
+        char_result = await self._db.execute(
+            select(Character.id).where(Character.user_id == user_id)
+        )
+        character_ids = [row[0] for row in char_result.fetchall()]
+        if not character_ids:
+            return []
+
+        query = (
+            select(GameSession)
+            .options(
+                selectinload(GameSession.character),
+                selectinload(GameSession.scenario),
+            )
+            .where(GameSession.character_id.in_(character_ids))
+            .order_by(
+                GameSession.last_activity_at.desc(),
+                GameSession.id.desc(),
+            )
+        )
+
+        if cursor:
+            cursor_session = await self._db.execute(
+                select(GameSession).where(GameSession.id == cursor)
+            )
+            cursor_obj = cursor_session.scalar_one_or_none()
+            if cursor_obj:
+                query = query.where(
+                    (
+                        GameSession.last_activity_at
+                        < cursor_obj.last_activity_at
+                    )
+                    | (
+                        (
+                            GameSession.last_activity_at
+                            == cursor_obj.last_activity_at
+                        )
+                        & (GameSession.id < cursor)
+                    )
+                )
+
+        if status_filter:
+            query = query.where(GameSession.status == status_filter)
+
+        query = query.limit(limit + 1)
+        result = await self._db.execute(query)
+        sessions = result.scalars().all()
+
+        return [
+            self._to_user_session_read_model(session) for session in sessions
+        ]
 
     async def save(self, session: GameSessionEntity) -> GameSessionEntity:
         """세션 저장 (생성 또는 업데이트)."""
@@ -131,3 +197,20 @@ class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
     async def commit(self) -> None:
         """세션 관련 작업 트랜잭션 커밋."""
         await self._db.commit()
+
+    @staticmethod
+    def _to_user_session_read_model(
+        session: GameSession,
+    ) -> UserSessionReadModel:
+        return UserSessionReadModel(
+            id=session.id,
+            character_name=session.character.name,
+            scenario_name=session.scenario.name,
+            status=session.status,
+            turn_count=session.turn_count,
+            max_turns=session.max_turns,
+            started_at=session.started_at,
+            last_activity_at=session.last_activity_at,
+            ending_type=session.ending_type,
+            character=CharacterMapper.to_entity(session.character),
+        )

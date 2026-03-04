@@ -1,22 +1,29 @@
-"""Unit tests for GetSessionHistoryQuery with cursor-based pagination."""
+"""Unit tests for GetSessionHistoryQuery with repository ports."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
 
 from app.common.exception import Forbidden
 from app.common.utils.datetime import get_utc_datetime
+from app.common.utils.id_generator import get_uuid7
 from app.game.application.queries.get_session_history import (
     GetSessionHistoryQuery,
 )
+from app.game.domain.entities import GameMessageEntity, GameSessionEntity
+from app.game.domain.value_objects import MessageRole, SessionStatus
 
 
 class TestGetSessionHistoryQuery:
-    """GetSessionHistoryQuery Unit Test (Cursor-based pagination)"""
+    """GetSessionHistoryQuery Unit Test."""
 
     @pytest.fixture
-    def mock_db(self):
+    def mock_session_repo(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_message_repo(self):
         return AsyncMock()
 
     @pytest.fixture
@@ -24,101 +31,82 @@ class TestGetSessionHistoryQuery:
         return AsyncMock()
 
     @pytest.fixture
-    def query(self, mock_db, mock_redis):
-        return GetSessionHistoryQuery(mock_db, mock_redis)
+    def query(self, mock_session_repo, mock_message_repo, mock_redis):
+        return GetSessionHistoryQuery(
+            session_repo=mock_session_repo,
+            message_repo=mock_message_repo,
+            redis=mock_redis,
+        )
 
     async def test_execute_with_cursor_first_page(
-        self, query, mock_db, mock_redis
+        self, query, mock_session_repo, mock_message_repo, mock_redis
     ):
-        """First page query (latest messages first)"""
+        """First page query (latest messages first)."""
         session_id = UUID("019c0000-0000-0000-0000-000000000001")
         user_id = UUID("019c0000-0000-0000-0000-000000000999")
 
-        # Mock: no cache
         mock_redis.get.return_value = None
 
-        # Mock: ownership check session
-        session_result = MagicMock()
-        session_result.scalar_one_or_none.return_value = (
-            self._create_mock_session(session_id, user_id)
+        mock_messages = [self._create_mock_message(i) for i in range(51)]
+        mock_session_repo.get_by_id.return_value = self._create_mock_session(
+            session_id,
+            user_id,
+        )
+        mock_message_repo.get_messages_with_cursor.return_value = (
+            mock_messages[:50],
+            mock_messages[49].id,
+            True,
         )
 
-        # Mock: message query (limit + 1)
-        msg_result = MagicMock()
-        mock_messages = [self._create_mock_message(i) for i in range(51)]
-        msg_result.scalars.return_value.all.return_value = mock_messages
-
-        mock_db.execute.side_effect = [session_result, msg_result]
-
-        # When
         messages, next_cursor, has_more = await query.execute_with_cursor(
             session_id=session_id, user_id=user_id, limit=50, cursor=None
         )
 
-        # Then
-        assert len(messages) == 50  # Only limit returned
+        assert len(messages) == 50
         assert has_more is True
-        assert next_cursor is not None
         assert next_cursor == mock_messages[49].id
-        # No cache for latest messages
         mock_redis.get.assert_not_called()
 
     async def test_execute_with_cursor_next_page(
-        self, query, mock_db, mock_redis
+        self, query, mock_session_repo, mock_message_repo, mock_redis
     ):
-        """Next page query with cursor"""
+        """Next page query with cursor."""
         session_id = UUID("019c0000-0000-0000-0000-000000000001")
         cursor = UUID("019c0000-0000-0000-0000-000000000050")
         user_id = UUID("019c0000-0000-0000-0000-000000000999")
 
-        # Mock: no cache
         mock_redis.get.return_value = None
 
-        # Mock: ownership check session
-        session_result = MagicMock()
-        session_result.scalar_one_or_none.return_value = (
-            self._create_mock_session(session_id, user_id)
+        mock_messages = [self._create_mock_message(i) for i in range(51, 100)]
+        mock_session_repo.get_by_id.return_value = self._create_mock_session(
+            session_id,
+            user_id,
+        )
+        mock_message_repo.get_messages_with_cursor.return_value = (
+            mock_messages,
+            None,
+            False,
         )
 
-        # Mock: cursor message
-        cursor_result = MagicMock()
-        mock_cursor_msg = self._create_mock_message(50)
-        cursor_result.scalar_one_or_none.return_value = mock_cursor_msg
-
-        # Mock: next messages
-        msg_result = MagicMock()
-        mock_messages = [self._create_mock_message(i) for i in range(51, 100)]
-        msg_result.scalars.return_value.all.return_value = mock_messages
-
-        mock_db.execute.side_effect = [
-            session_result,
-            cursor_result,
-            msg_result,
-        ]
-
-        # When
         messages, next_cursor, has_more = await query.execute_with_cursor(
             session_id=session_id, user_id=user_id, limit=50, cursor=cursor
         )
 
-        # Then
-        assert len(messages) == 49  # Less than limit (no more)
+        assert len(messages) == 49
         assert has_more is False
         assert next_cursor is None
-        # Cache should be checked for historical messages
         mock_redis.get.assert_called_once()
 
     async def test_execute_with_cursor_cache_hit(
-        self, query, mock_db, mock_redis
+        self, query, mock_session_repo, mock_message_repo, mock_redis
     ):
-        """Cache hit for historical messages"""
+        """Cache hit for historical messages."""
         import rapidjson
 
         session_id = UUID("019c0000-0000-0000-0000-000000000001")
         cursor = UUID("019c0000-0000-0000-0000-000000000050")
         user_id = UUID("019c0000-0000-0000-0000-000000000999")
 
-        # Mock: cache hit
         cached_data = {
             "messages": [
                 {
@@ -136,67 +124,58 @@ class TestGetSessionHistoryQuery:
             "has_more": True,
         }
         mock_redis.get.return_value = rapidjson.dumps(cached_data)
-
-        session_result = MagicMock()
-        session_result.scalar_one_or_none.return_value = (
-            self._create_mock_session(session_id, user_id)
+        mock_session_repo.get_by_id.return_value = self._create_mock_session(
+            session_id,
+            user_id,
         )
-        mock_db.execute.return_value = session_result
 
-        # When
         messages, next_cursor, has_more = await query.execute_with_cursor(
             session_id=session_id, user_id=user_id, limit=50, cursor=cursor
         )
 
-        # Then
         assert len(messages) == 10
         assert has_more is True
         assert next_cursor == UUID("019c0000-0000-0000-0000-000000000060")
-        # Ownership check query 1회만 호출됨
-        assert mock_db.execute.call_count == 1
+        mock_message_repo.get_messages_with_cursor.assert_not_called()
 
     async def test_execute_with_cursor_no_more_messages(
-        self, query, mock_db, mock_redis
+        self, query, mock_session_repo, mock_message_repo, mock_redis
     ):
-        """No more messages available"""
+        """No more messages available."""
         session_id = UUID("019c0000-0000-0000-0000-000000000001")
         user_id = UUID("019c0000-0000-0000-0000-000000000999")
 
-        # Mock: no cache
         mock_redis.get.return_value = None
 
-        # Mock: ownership check session
-        session_result = MagicMock()
-        session_result.scalar_one_or_none.return_value = (
-            self._create_mock_session(session_id, user_id)
+        mock_session_repo.get_by_id.return_value = self._create_mock_session(
+            session_id,
+            user_id,
+        )
+        mock_message_repo.get_messages_with_cursor.return_value = (
+            [],
+            None,
+            False,
         )
 
-        msg_result = MagicMock()
-        msg_result.scalars.return_value.all.return_value = []
-        mock_db.execute.side_effect = [session_result, msg_result]
-
-        # When
         messages, next_cursor, has_more = await query.execute_with_cursor(
             session_id=session_id, user_id=user_id, limit=50, cursor=None
         )
 
-        # Then
         assert messages == []
         assert has_more is False
         assert next_cursor is None
 
     async def test_execute_with_cursor_forbidden_when_not_owner(
-        self, query, mock_db, mock_redis
+        self, query, mock_session_repo, mock_message_repo, mock_redis
     ):
         session_id = UUID("019c0000-0000-0000-0000-000000000001")
         owner_id = UUID("019c0000-0000-0000-0000-000000000111")
         requester_id = UUID("019c0000-0000-0000-0000-000000000999")
 
-        session_result = MagicMock()
-        session_result.scalar_one_or_none.return_value = (
-            self._create_mock_session(session_id, owner_id)
+        mock_session_repo.get_by_id.return_value = self._create_mock_session(
+            session_id,
+            owner_id,
         )
-        mock_db.execute.return_value = session_result
 
         with pytest.raises(Forbidden):
             await query.execute_with_cursor(
@@ -206,22 +185,35 @@ class TestGetSessionHistoryQuery:
                 cursor=None,
             )
 
-    def _create_mock_message(self, index: int):
-        """Create mock GameMessage"""
-        from app.common.utils.id_generator import get_uuid7
+    @staticmethod
+    def _create_mock_message(index: int) -> GameMessageEntity:
+        return GameMessageEntity(
+            id=get_uuid7(),
+            session_id=get_uuid7(),
+            role=MessageRole.USER if index % 2 == 0 else MessageRole.ASSISTANT,
+            content=f"Message {index}",
+            parsed_response=None,
+            image_url=None,
+            created_at=get_utc_datetime(),
+        )
 
-        mock_msg = MagicMock()
-        mock_msg.id = get_uuid7()
-        mock_msg.role = "user" if index % 2 == 0 else "assistant"
-        mock_msg.content = f"Message {index}"
-        mock_msg.created_at = get_utc_datetime()
-        mock_msg.parsed_response = None
-        mock_msg.image_url = None
-
-        return mock_msg
-
-    def _create_mock_session(self, session_id: UUID, user_id: UUID):
-        mock_session = MagicMock()
-        mock_session.id = session_id
-        mock_session.user_id = user_id
-        return mock_session
+    @staticmethod
+    def _create_mock_session(
+        session_id: UUID, user_id: UUID
+    ) -> GameSessionEntity:
+        now = get_utc_datetime()
+        return GameSessionEntity(
+            id=session_id,
+            user_id=user_id,
+            character_id=get_uuid7(),
+            scenario_id=get_uuid7(),
+            current_location="start",
+            game_state={},
+            status=SessionStatus.ACTIVE,
+            turn_count=1,
+            max_turns=30,
+            ending_type=None,
+            started_at=now,
+            ended_at=None,
+            last_activity_at=now,
+        )

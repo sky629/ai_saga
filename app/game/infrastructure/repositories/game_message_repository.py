@@ -53,6 +53,65 @@ class GameMessageRepositoryImpl(GameMessageRepositoryInterface):
             GameMessageMapper.to_entity(orm) for orm in reversed(list(orms))
         ]
 
+    async def get_messages(
+        self,
+        session_id: UUID,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[GameMessageEntity]:
+        """세션 메시지 조회."""
+        result = await self._db.execute(
+            select(GameMessage)
+            .where(GameMessage.session_id == session_id)
+            .order_by(GameMessage.created_at)
+            .offset(offset)
+            .limit(limit)
+        )
+        orms = result.scalars().all()
+        return [GameMessageMapper.to_entity(orm) for orm in orms]
+
+    async def get_messages_with_cursor(
+        self,
+        session_id: UUID,
+        limit: int = 50,
+        cursor: UUID | None = None,
+    ) -> tuple[list[GameMessageEntity], UUID | None, bool]:
+        """Cursor 기반 세션 메시지 조회."""
+        query = (
+            select(GameMessage)
+            .where(GameMessage.session_id == session_id)
+            .order_by(GameMessage.created_at.desc(), GameMessage.id.desc())
+        )
+
+        if cursor:
+            cursor_result = await self._db.execute(
+                select(GameMessage).where(GameMessage.id == cursor)
+            )
+            cursor_obj = cursor_result.scalar_one_or_none()
+            if cursor_obj:
+                query = query.where(
+                    (GameMessage.created_at < cursor_obj.created_at)
+                    | (
+                        (GameMessage.created_at == cursor_obj.created_at)
+                        & (GameMessage.id < cursor)
+                    )
+                )
+
+        query = query.limit(limit + 1)
+        result = await self._db.execute(query)
+        orms = result.scalars().all()
+
+        has_more = len(orms) > limit
+        if has_more:
+            orms = orms[:limit]
+        next_cursor = orms[-1].id if orms and has_more else None
+
+        return (
+            [GameMessageMapper.to_entity(orm) for orm in orms],
+            next_cursor,
+            has_more,
+        )
+
     async def get_similar_messages(
         self,
         embedding: list[float],
