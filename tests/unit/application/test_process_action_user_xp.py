@@ -10,23 +10,12 @@ from app.game.application.ports import (
     UserProgressionResult,
 )
 from app.game.application.use_cases.process_action import ProcessActionUseCase
-from app.game.domain.entities import (
-    CharacterEntity,
-    GameMessageEntity,
-    GameSessionEntity,
-)
-from app.game.domain.value_objects import (
-    EndingType,
-    MessageRole,
-    SessionStatus,
-)
+from app.game.domain.entities import GameSessionEntity
+from app.game.domain.value_objects import EndingType, SessionStatus
 from app.game.domain.value_objects.scenario_difficulty import (
     ScenarioDifficulty,
 )
-from app.game.presentation.routes.schemas.response import (
-    GameActionResponse,
-    GameEndingResponse,
-)
+from app.game.presentation.routes.schemas.response import GameEndingResponse
 
 
 @pytest.fixture
@@ -293,9 +282,10 @@ async def test_death_ending_awards_defeat_xp(
         user_id,
     )
 
-    assert isinstance(response, GameActionResponse)
+    assert isinstance(response, GameEndingResponse)
     assert response.is_ending is True
     assert response.xp_gained == 75
+    assert response.ending_type == EndingType.DEFEAT.value
     mock_user_progression.award_game_experience.assert_called_once_with(
         user_id, 75
     )
@@ -326,6 +316,6 @@ async def test_death_ending_xp_failure_doesnt_break(
         user_id,
     )
 
-    assert isinstance(response, GameActionResponse)
+    assert isinstance(response, GameEndingResponse)
     assert response.is_ending is True
-    assert response.xp_gained is None
+    assert response.xp_gained == 0

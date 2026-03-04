@@ -14,6 +14,19 @@ from app.game.domain.value_objects import ScenarioDifficulty, SessionStatus
 from app.game.domain.value_objects.dice import DiceCheckType, DiceResult
 
 
+@pytest.mark.parametrize(
+    ("action", "expected"),
+    [
+        ("적을 공격한다", DiceCheckType.COMBAT),
+        ("상인을 설득한다", DiceCheckType.SOCIAL),
+        ("자물쇠를 해제한다", DiceCheckType.SKILL),
+        ("북쪽으로 이동한다", DiceCheckType.EXPLORATION),
+    ],
+)
+def test_infer_dice_check_type(action, expected):
+    assert ProcessActionUseCase._infer_dice_check_type(action) == expected
+
+
 @pytest.fixture
 def mock_repositories():
     mock_session_repository = AsyncMock()

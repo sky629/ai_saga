@@ -48,8 +48,8 @@ class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
     ) -> Optional[str]:
         """이미지 생성 후 R2에 업로드, URL 반환."""
         try:
-            # 테스트용
-            return await self._generate_dummy_image(prompt)
+            if settings.KANG_ENV.lower() == "local":
+                return await self._generate_dummy_image(prompt)
 
             # 1. 이미지 데이터 생성
             image_data = await self._generate_google_imagen(prompt)

@@ -179,6 +179,10 @@ class TestGameEndingDetection:
         character_repo.get_by_id.return_value = character_mock
 
         scenario_repo = AsyncMock()
+        scenario_mock = MagicMock()
+        scenario_mock.name = "테스트 시나리오"
+        scenario_mock.difficulty = "normal"
+        scenario_repo.get_by_id.return_value = scenario_mock
 
         llm_service = AsyncMock()
         llm_service.generate_response.return_value = AsyncMock(
@@ -493,3 +497,165 @@ class TestScenarioLoading:
 
         with pytest.raises(ValueError, match="Scenario .* not found"):
             await use_case.execute(active_session.user_id, input_data)
+
+
+@pytest.mark.asyncio
+class TestProcessActionSecurityAndDeathConsistency:
+    @pytest.fixture
+    def base_repositories(self):
+        session_repo = AsyncMock()
+        message_repo = AsyncMock()
+        message_repo.get_recent_messages.return_value = []
+        message_repo.get_similar_messages.return_value = []
+        character_repo = AsyncMock()
+        scenario_repo = AsyncMock()
+        llm_service = AsyncMock()
+        cache_service = AsyncMock()
+        cache_service.get.return_value = None
+        embedding_service = AsyncMock()
+        embedding_service.generate_embedding.return_value = [0.1] * 3
+        return {
+            "session_repository": session_repo,
+            "message_repository": message_repo,
+            "character_repository": character_repo,
+            "scenario_repository": scenario_repo,
+            "llm_service": llm_service,
+            "cache_service": cache_service,
+            "embedding_service": embedding_service,
+        }
+
+    async def test_session_ownership_is_enforced(self, base_repositories):
+        from app.common.utils.datetime import get_utc_datetime
+        from app.common.utils.id_generator import get_uuid7
+        from app.game.domain.entities import GameSessionEntity
+
+        owner_id = get_uuid7()
+        request_user_id = get_uuid7()
+        session_id = get_uuid7()
+        now = get_utc_datetime()
+
+        base_repositories["session_repository"].get_by_id.return_value = (
+            GameSessionEntity(
+                id=session_id,
+                user_id=owner_id,
+                character_id=get_uuid7(),
+                scenario_id=get_uuid7(),
+                current_location="Town",
+                game_state={},
+                status=SessionStatus.ACTIVE,
+                turn_count=1,
+                max_turns=10,
+                ending_type=None,
+                started_at=now,
+                last_activity_at=now,
+            )
+        )
+
+        use_case = ProcessActionUseCase(**base_repositories)
+        with pytest.raises(ValueError, match="does not belong to user"):
+            await use_case.execute(
+                request_user_id,
+                ProcessActionInput(
+                    session_id=session_id,
+                    action="몰래 이동한다",
+                    idempotency_key="owner-check-key",
+                ),
+            )
+
+    async def test_death_check_applies_when_dice_not_applied(
+        self, base_repositories
+    ):
+        from app.common.utils.datetime import get_utc_datetime
+        from app.common.utils.id_generator import get_uuid7
+        from app.game.domain.entities import (
+            CharacterEntity,
+            CharacterStats,
+            GameSessionEntity,
+            ScenarioEntity,
+        )
+
+        now = get_utc_datetime()
+        user_id = get_uuid7()
+        session_id = get_uuid7()
+        character_id = get_uuid7()
+        scenario_id = get_uuid7()
+
+        session = GameSessionEntity(
+            id=session_id,
+            user_id=user_id,
+            character_id=character_id,
+            scenario_id=scenario_id,
+            current_location="Dungeon",
+            game_state={},
+            status=SessionStatus.ACTIVE,
+            turn_count=1,
+            max_turns=10,
+            ending_type=None,
+            started_at=now,
+            last_activity_at=now,
+        )
+        scenario = ScenarioEntity(
+            id=scenario_id,
+            name="테스트 시나리오",
+            description="desc",
+            world_setting="world",
+            initial_location="Dungeon",
+            genre="fantasy",
+            difficulty="normal",
+            max_turns=10,
+            is_active=True,
+            created_at=now,
+        )
+        character = CharacterEntity(
+            id=character_id,
+            user_id=user_id,
+            scenario_id=scenario_id,
+            name="영웅",
+            description="desc",
+            stats=CharacterStats(hp=1, max_hp=10, level=1),
+            inventory=[],
+            is_active=True,
+            created_at=now,
+        )
+
+        base_repositories["session_repository"].get_by_id.return_value = (
+            session
+        )
+        base_repositories["scenario_repository"].get_by_id.return_value = (
+            scenario
+        )
+        base_repositories["character_repository"].get_by_id.side_effect = [
+            character,
+            character.update_stats(character.stats.take_damage(1)),
+            character.update_stats(character.stats.take_damage(1)),
+        ]
+
+        async def save_character(saved_character):
+            return saved_character
+
+        base_repositories["character_repository"].save.side_effect = (
+            save_character
+        )
+
+        llm_response = AsyncMock()
+        llm_response.content = (
+            '{"narrative": "함정이 터졌다", "options": ["버틴다"], '
+            '"dice_applied": false, "state_changes": {"hp_change": -1}}'
+        )
+        llm_response.usage = AsyncMock(total_tokens=10)
+        base_repositories["llm_service"].generate_response.return_value = (
+            llm_response
+        )
+
+        use_case = ProcessActionUseCase(**base_repositories)
+        result = await use_case.execute(
+            user_id,
+            ProcessActionInput(
+                session_id=session_id,
+                action="함정 지역으로 이동",
+                idempotency_key="death-no-dice-key",
+            ),
+        )
+
+        assert isinstance(result.response, GameEndingResponse)
+        assert result.response.ending_type == "defeat"

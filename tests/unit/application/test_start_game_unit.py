@@ -10,6 +10,7 @@ from app.game.application.use_cases.start_game import (
 )
 from app.game.domain.entities import CharacterEntity, ScenarioEntity
 from app.game.domain.value_objects import MessageRole
+from config.settings import settings
 
 
 @pytest.fixture
@@ -290,3 +291,73 @@ async def test_start_game_stores_parsed_response_when_llm_returns_json(
     assert (
         created_message.parsed_response["state_changes"]["location"] == "Start"
     )
+
+
+@pytest.mark.asyncio
+async def test_start_game_skips_auto_illustration_when_feature_disabled(
+    mock_session_repo,
+    mock_character_repo,
+    mock_scenario_repo,
+    mock_message_repo,
+    mock_llm_service,
+):
+    user_id = get_uuid7()
+    character_id = get_uuid7()
+    scenario_id = get_uuid7()
+    image_service = AsyncMock()
+
+    use_case = StartGameUseCase(
+        session_repository=mock_session_repo,
+        character_repository=mock_character_repo,
+        scenario_repository=mock_scenario_repo,
+        message_repository=mock_message_repo,
+        llm_service=mock_llm_service,
+        image_service=image_service,
+    )
+
+    character = CharacterEntity(
+        id=character_id,
+        user_id=user_id,
+        scenario_id=scenario_id,
+        name="Hero",
+        description="Desc",
+        stats={},
+        inventory=[],
+        is_active=True,
+        created_at=get_utc_datetime(),
+    )
+    scenario = ScenarioEntity(
+        id=scenario_id,
+        name="Scenario",
+        description="Desc",
+        world_setting="World",
+        initial_location="Start",
+        genre="fantasy",
+        difficulty="normal",
+        max_turns=30,
+        is_active=True,
+        created_at=get_utc_datetime(),
+        updated_at=get_utc_datetime(),
+    )
+    mock_character_repo.get_by_id.return_value = character
+    mock_scenario_repo.get_by_id.return_value = scenario
+    mock_session_repo.get_active_by_character.return_value = None
+    mock_session_repo.save.side_effect = lambda session: session
+
+    mock_llm_response = MagicMock()
+    mock_llm_response.content = "Welcome to the game."
+    mock_llm_response.usage.total_tokens = 10
+    mock_llm_service.generate_response.return_value = mock_llm_response
+
+    original_flag = settings.image_generation_enabled
+    settings.image_generation_enabled = False
+    try:
+        result = await use_case.execute(
+            user_id,
+            StartGameInput(character_id=character_id, scenario_id=scenario_id),
+        )
+    finally:
+        settings.image_generation_enabled = original_flag
+
+    assert result.image_url is None
+    image_service.generate_image.assert_not_called()

@@ -113,6 +113,10 @@ class TestGenerateIllustrationUseCase:
         assert result.image_url == expected_url
         assert result.message_id == message_id
         mock_image_service.generate_image.assert_called_once()
+        called_prompt = mock_image_service.generate_image.call_args.kwargs[
+            "prompt"
+        ]
+        assert "고블린이 당신을 향해 달려옵니다." in called_prompt
         mock_message_repo.update_image_url.assert_called_once_with(
             message_id, expected_url
         )
@@ -220,6 +224,37 @@ class TestGenerateIllustrationUseCase:
         )
         with pytest.raises(BadRequest):
             await use_case.execute(user_id, input_data)
+
+    @pytest.mark.asyncio
+    async def test_raises_if_message_session_mismatch(
+        self,
+        use_case,
+        mock_session_repo,
+        mock_message_repo,
+    ):
+        """요청 세션과 메시지 소속 세션이 다르면 BadRequest."""
+        from app.common.exception import BadRequest
+
+        user_id = get_uuid7()
+        requested_session_id = get_uuid7()
+        other_session_id = get_uuid7()
+        message_id = get_uuid7()
+
+        mock_session_repo.get_by_id.return_value = _make_session(
+            requested_session_id, user_id
+        )
+        mock_message_repo.get_by_id.return_value = _make_ai_message(
+            message_id, other_session_id
+        )
+
+        with pytest.raises(BadRequest):
+            await use_case.execute(
+                user_id,
+                GenerateIllustrationInput(
+                    session_id=requested_session_id,
+                    message_id=message_id,
+                ),
+            )
 
     @pytest.mark.asyncio
     async def test_returns_existing_url_if_already_generated(

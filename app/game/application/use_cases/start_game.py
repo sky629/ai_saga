@@ -161,7 +161,7 @@ class StartGameUseCase:
         # Save initial message
         initial_image_url = None
         # Generate initial illustration
-        if self._image_service:
+        if self._image_service and settings.image_generation_enabled:
             # 픽셀 아트 스타일 프롬프트 (Pixel Art, Retro Game Style)
             illustration_prompt = (
                 f"Pixel art style game illustration: {response.content[:300]}. "

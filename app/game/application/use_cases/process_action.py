@@ -189,7 +189,10 @@ class ProcessActionUseCase:
             )
         else:
             session, response = await self._handle_normal_turn(
-                session, user_id, all_context_messages
+                session,
+                user_id,
+                input_data.action,
+                all_context_messages,
             )
 
         # 9. Save session state
@@ -205,6 +208,9 @@ class ProcessActionUseCase:
         self, session: GameSessionEntity, user_id: UUID
     ) -> None:
         """세션 유효성 검증."""
+        if session.user_id != user_id:
+            raise ValueError("Session does not belong to user")
+
         # Check if session is already completed
         if session.status == SessionStatus.COMPLETED:
             # 상태가 이미 완료라면, 추가 액션 처리 불가
@@ -230,6 +236,7 @@ class ProcessActionUseCase:
         self,
         session: GameSessionEntity,
         user_id: UUID,
+        player_action: str,
         recent_messages: list[GameMessageEntity],
     ) -> tuple[GameSessionEntity, GameActionResponse]:
         """일반 턴 처리."""
@@ -255,10 +262,11 @@ class ProcessActionUseCase:
         if not character:
             raise ValueError(f"Character {session.character_id} not found")
 
+        check_type = self._infer_dice_check_type(player_action)
         dice_result = DiceService.perform_check(
             level=character.stats.level,
             difficulty=scenario.difficulty,
-            check_type=DiceCheckType.COMBAT,
+            check_type=check_type,
         )
 
         dice_result_section = build_dice_result_section(dice_result)
@@ -400,19 +408,18 @@ class ProcessActionUseCase:
                     )
                     await self._character_repo.save(character)
 
-            if dice_applied:
-                character = await self._character_repo.get_by_id(
-                    session.character_id
+            character = await self._character_repo.get_by_id(
+                session.character_id
+            )
+            if character and GameMasterService.should_end_game_by_death(
+                character
+            ):
+                session = session.complete(EndingType.DEFEAT)
+                await self._session_repo.save(session)
+                ending_response = await self._handle_death_ending(
+                    session, character, narrative, recent_messages, user_id
                 )
-                if character and GameMasterService.should_end_game_by_death(
-                    character
-                ):
-                    session = session.complete(EndingType.DEFEAT)
-                    await self._session_repo.save(session)
-                    ending_response = await self._handle_death_ending(
-                        session, character, narrative, recent_messages, user_id
-                    )
-                    return session, ending_response
+                return session, ending_response
         else:
             # Fallback to text parsing if JSON parsing fails
             logger.warning(
@@ -561,13 +568,15 @@ class ProcessActionUseCase:
                 xp_gained = 0
                 progression = None
 
+        scenario = await self._scenario_repo.get_by_id(session.scenario_id)
+
         response = GameEndingResponse(
             session_id=session.id,
             ending_type=ending_type.value,
             narrative=narrative,
             total_turns=session.turn_count,
             character_name=character_name,
-            scenario_name="",
+            scenario_name=scenario.name if scenario else "",
             xp_gained=xp_gained,
             new_game_level=progression.game_level if progression else 1,
             leveled_up=progression.leveled_up if progression else False,
@@ -583,7 +592,7 @@ class ProcessActionUseCase:
         narrative: str,
         recent_messages: list[GameMessageEntity],
         user_id: Optional[UUID] = None,
-    ) -> GameActionResponse:
+    ) -> GameEndingResponse:
         death_narrative = (
             f"{narrative}\n\n"
             f"💀 {character.name}의 HP가 0이 되어 사망했습니다. "
@@ -625,26 +634,19 @@ class ProcessActionUseCase:
                 xp_gained = 0
                 progression = None
 
-        return GameActionResponse(
-            message=GameMessageResponse(
-                id=ending_message.id,
-                role=ending_message.role.value,
-                content=ending_message.content,
-                parsed_response=ending_message.parsed_response,
-                image_url=None,
-                created_at=ending_message.created_at,
-            ),
+        scenario = await self._scenario_repo.get_by_id(session.scenario_id)
+
+        return GameEndingResponse(
+            session_id=session.id,
+            ending_type=EndingType.DEFEAT.value,
             narrative=death_narrative,
-            options=["게임 종료"],
-            turn_count=session.turn_count,
-            max_turns=session.max_turns,
-            is_ending=True,
-            state_changes=None,
-            image_url=None,
-            dice_result=None,
-            xp_gained=xp_gained if xp_gained > 0 else None,
-            leveled_up=progression.leveled_up if progression else None,
-            new_game_level=progression.game_level if progression else None,
+            total_turns=session.turn_count,
+            character_name=character.name,
+            scenario_name=scenario.name if scenario else "",
+            xp_gained=xp_gained,
+            new_game_level=progression.game_level if progression else 1,
+            leveled_up=progression.leveled_up if progression else False,
+            levels_gained=progression.levels_gained if progression else 0,
         )
 
     async def _check_idempotency(
@@ -708,3 +710,52 @@ class ProcessActionUseCase:
                 session.character_id
             ),  # character_id를 user_id 대신 사용
         )
+
+    @staticmethod
+    def _infer_dice_check_type(action: str) -> DiceCheckType:
+        normalized = action.lower().strip()
+
+        combat_keywords = [
+            "attack",
+            "fight",
+            "strike",
+            "hit",
+            "battle",
+            "전투",
+            "공격",
+            "베기",
+            "찌르기",
+            "사격",
+        ]
+        social_keywords = [
+            "talk",
+            "speak",
+            "persuade",
+            "threaten",
+            "negotiate",
+            "대화",
+            "설득",
+            "협상",
+            "위협",
+            "거래",
+        ]
+        skill_keywords = [
+            "hack",
+            "unlock",
+            "disarm",
+            "craft",
+            "pick lock",
+            "해킹",
+            "자물쇠",
+            "함정",
+            "제작",
+            "수리",
+        ]
+
+        if any(keyword in normalized for keyword in combat_keywords):
+            return DiceCheckType.COMBAT
+        if any(keyword in normalized for keyword in social_keywords):
+            return DiceCheckType.SOCIAL
+        if any(keyword in normalized for keyword in skill_keywords):
+            return DiceCheckType.SKILL
+        return DiceCheckType.EXPLORATION

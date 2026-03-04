@@ -69,6 +69,11 @@ class GenerateIllustrationUseCase:
         if message is None:
             raise NotFound(message="메시지를 찾을 수 없습니다.")
 
+        if message.session_id != session.id:
+            raise BadRequest(
+                message="해당 메시지는 요청한 세션에 속하지 않습니다."
+            )
+
         if not message.is_ai_response:
             raise BadRequest(
                 message="AI 응답 메시지에만 일러스트를 생성할 수 있습니다."
@@ -80,11 +85,15 @@ class GenerateIllustrationUseCase:
                 image_url=message.image_url,
             )
 
-        # Pollinations.ai URL 길이 제한으로 인해 고정 프롬프트만 사용
-        # TODO: 유료 Imagen 전환 시 내러티브 기반 프롬프트로 복구 가능
+        narrative_snippet = " ".join(message.content.split())[:280]
+        if not narrative_snippet:
+            narrative_snippet = "mysterious fantasy RPG adventure scene"
+
         illustration_prompt = (
-            "Pixel art fantasy RPG game scene, 16-bit retro style, "
-            "detailed pixel art, vibrant colors, adventure atmosphere"
+            "Pixel art fantasy RPG scene based on this narrative: "
+            f"{narrative_snippet}. "
+            "Retro 16-bit game aesthetic, detailed pixel art, vibrant colors, "
+            "adventure atmosphere."
         )
 
         image_url = await self._image_service.generate_image(
