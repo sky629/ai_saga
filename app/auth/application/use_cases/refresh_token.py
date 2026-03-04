@@ -19,6 +19,7 @@ class RefreshTokenResult(BaseModel):
     access_token: str
     token_type: str
     expires_in: int
+    refresh_token: str
 
 
 class RefreshTokenUseCase:
@@ -49,8 +50,16 @@ class RefreshTokenUseCase:
             email=session_data["email"],
             user_level=session_data["user_level"],
         )
+        new_refresh = self._token_service.create_refresh_token(user_id=user_id)
+        await self._token_service.blacklist_token(input_data.refresh_token)
+        await self._cache.set_jwt_session(
+            user_id=user_id,
+            session_data=session_data,
+            expire=new_refresh["expires_in"],
+        )
         return RefreshTokenResult(
             access_token=new_token["access_token"],
             token_type=new_token["token_type"],
             expires_in=new_token["expires_in"],
+            refresh_token=new_refresh["refresh_token"],
         )

@@ -14,6 +14,7 @@ from app.auth.domain.value_objects import AuthProvider, UserLevel
 from app.common.exception import BadRequest
 from app.common.utils.datetime import get_utc_datetime
 from app.common.utils.id_generator import get_uuid7
+from config.settings import settings
 
 
 class OAuthCallbackInput(BaseModel):
@@ -145,7 +146,7 @@ class HandleOAuthCallbackUseCase:
                 "email": user.email,
                 "user_level": user.user_level.value,
             },
-            expire=jwt_access["expires_in"],
+            expire=settings.jwt_session_expire_minutes * 60,
         )
 
         return OAuthCallbackResult(

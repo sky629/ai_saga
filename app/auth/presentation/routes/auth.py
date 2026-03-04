@@ -49,6 +49,7 @@ from app.auth.presentation.routes.schemas.response import (
 )
 from app.common.exception import APIException
 from app.common.middleware.rate_limiting import RATE_LIMITS, limiter
+from config.settings import settings
 
 auth_public_router_v1 = APIRouter(
     route_class=APIRoute,
@@ -105,9 +106,9 @@ async def google_callback(
             key="refresh_token",
             value=result.refresh_token,
             httponly=True,
-            secure=False,  # Set to True in production (HTTPS)
+            secure=settings.is_prod(),
             samesite="lax",  # Needed for redirect flow to work
-            max_age=7 * 24 * 60 * 60,  # 7 days
+            max_age=settings.jwt_refresh_token_expire_minutes * 60,
         )
 
         return response
@@ -140,14 +141,22 @@ async def refresh_token(
         input_data = RefreshTokenInput(refresh_token=refresh_token)
         result = await use_case.execute(input_data)
 
-        # Optionally rotate refresh token here if use case returns a new one
-        # For now, just return access token
+        response.set_cookie(
+            key="refresh_token",
+            value=result.refresh_token,
+            httponly=True,
+            secure=settings.is_prod(),
+            samesite="lax",
+            max_age=settings.jwt_refresh_token_expire_minutes * 60,
+        )
 
         return TokenResponse(
             access_token=result.access_token,
             token_type=result.token_type,
             expires_in=result.expires_in,
         )
+    except HTTPException:
+        raise
     except APIException:
         raise
     except Exception as e:
@@ -204,7 +213,7 @@ async def logout(
         response.delete_cookie(
             key="refresh_token",
             httponly=True,
-            secure=False,
+            secure=settings.is_prod(),
             samesite="lax",
         )
 

@@ -26,6 +26,9 @@ class TokenAdapter(TokenServiceInterface):
         self.access_token_expire_minutes = (
             settings.jwt_access_token_expire_minutes
         )
+        self.refresh_token_expire_minutes = (
+            settings.jwt_refresh_token_expire_minutes
+        )
 
     def create_access_token(
         self,
@@ -73,8 +76,12 @@ class TokenAdapter(TokenServiceInterface):
     ) -> Dict[str, Any]:
         if expires_delta:
             expire = get_utc_datetime() + expires_delta
+            expires_in = int(expires_delta.total_seconds())
         else:
-            expire = get_utc_datetime() + timedelta(days=30)
+            expire = get_utc_datetime() + timedelta(
+                minutes=self.refresh_token_expire_minutes
+            )
+            expires_in = self.refresh_token_expire_minutes * 60
 
         jti = str(uuid7())
 
@@ -90,7 +97,11 @@ class TokenAdapter(TokenServiceInterface):
             to_encode, self.secret_key, algorithm=self.algorithm
         )
 
-        return {"refresh_token": encoded_jwt, "jti": jti}
+        return {
+            "refresh_token": encoded_jwt,
+            "jti": jti,
+            "expires_in": expires_in,
+        }
 
     async def verify_token(self, token: str) -> Dict[str, Any]:
         try:

@@ -2,6 +2,8 @@
 
 from fastapi.testclient import TestClient
 
+from app.auth.application.use_cases.refresh_token import RefreshTokenResult
+from app.auth.dependencies import get_refresh_token_use_case
 
 class TestAuthRoutes:
     """Test authentication route endpoints."""
@@ -48,7 +50,7 @@ class TestAuthRoutes:
     def test_refresh_token_missing_token(self, client: TestClient):
         """Test token refresh with missing refresh token."""
         response = client.post("/api/v1/auth/refresh/")
-        assert response.status_code == 500
+        assert response.status_code == 401
 
     def test_refresh_token_invalid_token(self, client: TestClient):
         """Test token refresh with invalid refresh token."""
@@ -57,7 +59,7 @@ class TestAuthRoutes:
             cookies={"refresh_token": "invalid-token"},
         )
 
-        assert response.status_code in [401, 500]
+        assert response.status_code == 401
 
     def test_me_endpoint_unauthenticated(self, client: TestClient):
         """Test getting current user without authentication."""
@@ -138,3 +140,32 @@ class TestAuthValidation:
         )
         # Auth fails first before UUID validation
         assert response.status_code == 401
+
+
+def test_refresh_token_sets_rotated_cookie(app):
+    """Test refresh route rotates refresh token cookie."""
+
+    class FakeRefreshUseCase:
+        async def execute(self, input_data):
+            return RefreshTokenResult(
+                access_token="new-access",
+                token_type="bearer",
+                expires_in=1800,
+                refresh_token="new-refresh-token",
+            )
+
+    app.dependency_overrides[get_refresh_token_use_case] = (
+        lambda: FakeRefreshUseCase()
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/auth/refresh/",
+        cookies={"refresh_token": "old-refresh-token"},
+    )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["access_token"] == "new-access"
+    assert "refresh_token=new-refresh-token" in response.headers["set-cookie"]
