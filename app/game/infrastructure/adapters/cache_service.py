@@ -8,6 +8,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Any, Optional
 
+from app.common.exception import Conflict
 from app.common.storage.redis import pools
 from app.game.application.ports import CacheServiceInterface
 
@@ -53,7 +54,11 @@ class CacheServiceAdapter(CacheServiceInterface):
         lock_obj = redis.lock(
             lock_key, timeout=timeout_seconds, blocking_timeout=5.0
         )
-        await lock_obj.acquire()
+        acquired = await lock_obj.acquire()
+        if not acquired:
+            raise Conflict(
+                message="요청이 이미 처리 중입니다. 잠시 후 다시 시도해 주세요."
+            )
 
         logger.debug(f"[Lock] Acquired: {lock_key} (TTL: {timeout_seconds}s)")
 

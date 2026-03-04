@@ -1,5 +1,7 @@
 """Game API routes."""
 
+import hashlib
+import json
 from typing import List, Optional, Union
 from uuid import UUID
 
@@ -12,10 +14,11 @@ from fastapi import (
     Response,
     status,
 )
+from sqlalchemy.exc import IntegrityError
 
 from app.auth.dependencies import get_current_user
 from app.auth.infrastructure.persistence.models.user_models import User
-from app.common.exception import APIException
+from app.common.exception import APIException, Conflict
 from app.game.application.use_cases.create_character import (
     CreateCharacterInput,
 )
@@ -96,7 +99,19 @@ async def create_character(
         description=request.description,
         scenario_id=request.scenario_id,
     )
-    character = await use_case.execute(current_user.id, input_data)
+    try:
+        character = await use_case.execute(current_user.id, input_data)
+    except ValueError as e:
+        error_msg = str(e).lower()
+        if "scenario not found" in error_msg or "inactive" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Scenario not found",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     return character
 
 
@@ -109,7 +124,7 @@ async def list_sessions(
     limit: int = Query(20, ge=1, le=100, description="Page size"),
     cursor: Optional[UUID] = Query(None, description="Next page cursor"),
     status: Optional[str] = Query(
-        None, pattern="^(active|completed|abandoned)$"
+        None, pattern="^(active|paused|completed|ended)$"
     ),
 ):
     """Get game sessions list (Cursor-based pagination)."""
@@ -159,12 +174,101 @@ async def start_game(
     )
 
     if idempotency_key:
+        payload = {
+            "character_id": str(request.character_id),
+            "scenario_id": str(request.scenario_id),
+            "max_turns": request.max_turns,
+        }
+        payload_hash = hashlib.sha256(
+            json.dumps(payload, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        replay_key = (
+            f"game:start:idempotency:{current_user.id}:{idempotency_key}"
+        )
+        cached_payload = await cache_service.get(replay_key)
+        if cached_payload:
+            replay_data = json.loads(cached_payload)
+            if replay_data.get("payload_hash") != payload_hash:
+                raise Conflict(
+                    message=(
+                        "같은 Idempotency-Key에 다른 요청 본문을 사용할 수 없습니다."
+                    )
+                )
+            return GameSessionResponse.model_validate(replay_data["response"])
+
         lock_key = f"game:start:{current_user.id}:{idempotency_key}"
         async with cache_service.lock(lock_key, ttl_ms=20000):
-            result = await use_case.execute(current_user.id, input_data)
+            cached_payload = await cache_service.get(replay_key)
+            if cached_payload:
+                replay_data = json.loads(cached_payload)
+                if replay_data.get("payload_hash") != payload_hash:
+                    raise Conflict(
+                        message=(
+                            "같은 Idempotency-Key에 다른 요청 본문을 사용할 수 없습니다."
+                        )
+                    )
+                return GameSessionResponse.model_validate(
+                    replay_data["response"]
+                )
+
+            try:
+                result = await use_case.execute(current_user.id, input_data)
+            except ValueError as e:
+                error_msg = str(e).lower()
+                if "active session" in error_msg:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Character already has an active session",
+                    )
+                if "not found" in error_msg:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=str(e),
+                    )
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=str(e),
+                )
+            except IntegrityError:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Character already has an active session",
+                )
+            await cache_service.set(
+                replay_key,
+                json.dumps(
+                    {
+                        "payload_hash": payload_hash,
+                        "response": result.model_dump(mode="json"),
+                    }
+                ),
+                ttl_seconds=600,
+            )
     else:
         # No idempotency key, just execute
-        result = await use_case.execute(current_user.id, input_data)
+        try:
+            result = await use_case.execute(current_user.id, input_data)
+        except ValueError as e:
+            error_msg = str(e).lower()
+            if "active session" in error_msg:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Character already has an active session",
+                )
+            if "not found" in error_msg:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=str(e),
+                )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            )
+        except IntegrityError:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Character already has an active session",
+            )
 
     return result
 
@@ -247,6 +351,12 @@ async def submit_action(
     current_user: User = Depends(get_current_user),
 ):
     """Submit a player action to a game session."""
+    if not idempotency_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Idempotency-Key header is required",
+        )
+
     input_data = ProcessActionInput(
         session_id=session_id,
         action=request.action,
@@ -254,7 +364,7 @@ async def submit_action(
     )
 
     # Endpoint-level Distributed Lock
-    lock_key = f"game:{session_id}:{idempotency_key}"
+    lock_key = f"game:action:{session_id}"
     async with cache_service.lock(lock_key, ttl_ms=20000):  # 20s lock
         # TODO: llm 응답을 입력으로 이미지를 생성해서 같이 반환
 
@@ -274,6 +384,16 @@ async def submit_action(
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=error_msg,
+                )
+            elif "does not belong to user" in error_msg.lower():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Session does not belong to current user",
+                )
+            elif "not found" in error_msg.lower():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Session not found",
                 )
             # 다른 ValueError는 그대로 re-raise
             raise
@@ -301,6 +421,7 @@ async def get_session_messages(
     """
     messages, next_cursor, has_more = await query.execute_with_cursor(
         session_id=session_id,
+        user_id=current_user.id,
         limit=limit,
         cursor=cursor,
     )
