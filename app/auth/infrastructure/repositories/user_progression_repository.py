@@ -32,7 +32,7 @@ class UserProgressionRepositoryImpl(UserProgressionInterface):
         )
         game_level = result.scalar_one_or_none()
         if game_level is None:
-            raise NotFound(f"유저를 찾을 수 없습니다: {user_id}")
+            raise NotFound(message=f"유저를 찾을 수 없습니다: {user_id}")
         return game_level
 
     async def award_game_experience(
@@ -44,7 +44,7 @@ class UserProgressionRepositoryImpl(UserProgressionInterface):
         )
         user_orm = result.scalar_one_or_none()
         if user_orm is None:
-            raise NotFound(f"유저를 찾을 수 없습니다: {user_id}")
+            raise NotFound(message=f"유저를 찾을 수 없습니다: {user_id}")
 
         user_entity = UserMapper.to_entity(user_orm)
         old_level = user_entity.game_level

@@ -13,6 +13,7 @@ from redis.asyncio import Redis
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.common.exception import Forbidden
 from app.game.infrastructure.persistence.models.game_models import (
     GameMessage,
     GameSession,
@@ -58,6 +59,7 @@ class GetSessionHistoryQuery:
     async def execute(
         self,
         session_id: UUID,
+        user_id: UUID,
         limit: int = 50,
         offset: int = 0,
     ) -> Optional[SessionHistoryResult]:
@@ -70,6 +72,8 @@ class GetSessionHistoryQuery:
 
         if session is None:
             return None
+        if session.user_id != user_id:
+            raise Forbidden(message="해당 세션에 접근할 권한이 없습니다.")
 
         # 메시지 조회
         messages_result = await self._db.execute(
@@ -130,6 +134,7 @@ class GetSessionHistoryQuery:
     async def execute_with_cursor(
         self,
         session_id: UUID,
+        user_id: UUID,
         limit: int = 50,
         cursor: Optional[UUID] = None,
     ) -> tuple[list[MessageHistoryItem], Optional[UUID], bool]:
@@ -142,6 +147,8 @@ class GetSessionHistoryQuery:
         Returns:
             (messages, next_cursor, has_more)
         """
+        await self._validate_session_ownership(session_id, user_id)
+
         # 최신 메시지 조회 시 캐시 우회
         if cursor is None or self._redis is None:
             return await self._fetch_from_db(session_id, limit, cursor)
@@ -179,6 +186,18 @@ class GetSessionHistoryQuery:
         )
 
         return messages, next_cursor, has_more
+
+    async def _validate_session_ownership(
+        self, session_id: UUID, user_id: UUID
+    ) -> None:
+        session_result = await self._db.execute(
+            select(GameSession).where(GameSession.id == session_id)
+        )
+        session = session_result.scalar_one_or_none()
+        if session is None:
+            return
+        if session.user_id != user_id:
+            raise Forbidden(message="해당 세션에 접근할 권한이 없습니다.")
 
     async def _fetch_from_db(
         self,

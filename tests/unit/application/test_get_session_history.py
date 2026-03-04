@@ -5,6 +5,7 @@ from uuid import UUID
 
 import pytest
 
+from app.common.exception import Forbidden
 from app.common.utils.datetime import get_utc_datetime
 from app.game.application.queries.get_session_history import (
     GetSessionHistoryQuery,
@@ -31,20 +32,27 @@ class TestGetSessionHistoryQuery:
     ):
         """First page query (latest messages first)"""
         session_id = UUID("019c0000-0000-0000-0000-000000000001")
+        user_id = UUID("019c0000-0000-0000-0000-000000000999")
 
         # Mock: no cache
         mock_redis.get.return_value = None
+
+        # Mock: ownership check session
+        session_result = MagicMock()
+        session_result.scalar_one_or_none.return_value = (
+            self._create_mock_session(session_id, user_id)
+        )
 
         # Mock: message query (limit + 1)
         msg_result = MagicMock()
         mock_messages = [self._create_mock_message(i) for i in range(51)]
         msg_result.scalars.return_value.all.return_value = mock_messages
 
-        mock_db.execute.return_value = msg_result
+        mock_db.execute.side_effect = [session_result, msg_result]
 
         # When
         messages, next_cursor, has_more = await query.execute_with_cursor(
-            session_id=session_id, limit=50, cursor=None
+            session_id=session_id, user_id=user_id, limit=50, cursor=None
         )
 
         # Then
@@ -61,9 +69,16 @@ class TestGetSessionHistoryQuery:
         """Next page query with cursor"""
         session_id = UUID("019c0000-0000-0000-0000-000000000001")
         cursor = UUID("019c0000-0000-0000-0000-000000000050")
+        user_id = UUID("019c0000-0000-0000-0000-000000000999")
 
         # Mock: no cache
         mock_redis.get.return_value = None
+
+        # Mock: ownership check session
+        session_result = MagicMock()
+        session_result.scalar_one_or_none.return_value = (
+            self._create_mock_session(session_id, user_id)
+        )
 
         # Mock: cursor message
         cursor_result = MagicMock()
@@ -75,11 +90,15 @@ class TestGetSessionHistoryQuery:
         mock_messages = [self._create_mock_message(i) for i in range(51, 100)]
         msg_result.scalars.return_value.all.return_value = mock_messages
 
-        mock_db.execute.side_effect = [cursor_result, msg_result]
+        mock_db.execute.side_effect = [
+            session_result,
+            cursor_result,
+            msg_result,
+        ]
 
         # When
         messages, next_cursor, has_more = await query.execute_with_cursor(
-            session_id=session_id, limit=50, cursor=cursor
+            session_id=session_id, user_id=user_id, limit=50, cursor=cursor
         )
 
         # Then
@@ -97,6 +116,7 @@ class TestGetSessionHistoryQuery:
 
         session_id = UUID("019c0000-0000-0000-0000-000000000001")
         cursor = UUID("019c0000-0000-0000-0000-000000000050")
+        user_id = UUID("019c0000-0000-0000-0000-000000000999")
 
         # Mock: cache hit
         cached_data = {
@@ -117,40 +137,74 @@ class TestGetSessionHistoryQuery:
         }
         mock_redis.get.return_value = rapidjson.dumps(cached_data)
 
+        session_result = MagicMock()
+        session_result.scalar_one_or_none.return_value = (
+            self._create_mock_session(session_id, user_id)
+        )
+        mock_db.execute.return_value = session_result
+
         # When
         messages, next_cursor, has_more = await query.execute_with_cursor(
-            session_id=session_id, limit=50, cursor=cursor
+            session_id=session_id, user_id=user_id, limit=50, cursor=cursor
         )
 
         # Then
         assert len(messages) == 10
         assert has_more is True
         assert next_cursor == UUID("019c0000-0000-0000-0000-000000000060")
-        # DB should not be called
-        mock_db.execute.assert_not_called()
+        # Ownership check query 1회만 호출됨
+        assert mock_db.execute.call_count == 1
 
     async def test_execute_with_cursor_no_more_messages(
         self, query, mock_db, mock_redis
     ):
         """No more messages available"""
         session_id = UUID("019c0000-0000-0000-0000-000000000001")
+        user_id = UUID("019c0000-0000-0000-0000-000000000999")
 
         # Mock: no cache
         mock_redis.get.return_value = None
 
+        # Mock: ownership check session
+        session_result = MagicMock()
+        session_result.scalar_one_or_none.return_value = (
+            self._create_mock_session(session_id, user_id)
+        )
+
         msg_result = MagicMock()
         msg_result.scalars.return_value.all.return_value = []
-        mock_db.execute.return_value = msg_result
+        mock_db.execute.side_effect = [session_result, msg_result]
 
         # When
         messages, next_cursor, has_more = await query.execute_with_cursor(
-            session_id=session_id, limit=50, cursor=None
+            session_id=session_id, user_id=user_id, limit=50, cursor=None
         )
 
         # Then
         assert messages == []
         assert has_more is False
         assert next_cursor is None
+
+    async def test_execute_with_cursor_forbidden_when_not_owner(
+        self, query, mock_db, mock_redis
+    ):
+        session_id = UUID("019c0000-0000-0000-0000-000000000001")
+        owner_id = UUID("019c0000-0000-0000-0000-000000000111")
+        requester_id = UUID("019c0000-0000-0000-0000-000000000999")
+
+        session_result = MagicMock()
+        session_result.scalar_one_or_none.return_value = (
+            self._create_mock_session(session_id, owner_id)
+        )
+        mock_db.execute.return_value = session_result
+
+        with pytest.raises(Forbidden):
+            await query.execute_with_cursor(
+                session_id=session_id,
+                user_id=requester_id,
+                limit=50,
+                cursor=None,
+            )
 
     def _create_mock_message(self, index: int):
         """Create mock GameMessage"""
@@ -165,3 +219,9 @@ class TestGetSessionHistoryQuery:
         mock_msg.image_url = None
 
         return mock_msg
+
+    def _create_mock_session(self, session_id: UUID, user_id: UUID):
+        mock_session = MagicMock()
+        mock_session.id = session_id
+        mock_session.user_id = user_id
+        return mock_session

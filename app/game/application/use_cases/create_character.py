@@ -1,5 +1,6 @@
 """Create Character Use Case."""
 
+from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -20,7 +21,7 @@ class CreateCharacterInput(BaseModel):
     """Use Case 입력 DTO."""
 
     name: str
-    description: str
+    description: Optional[str] = None
     scenario_id: UUID
 
 
