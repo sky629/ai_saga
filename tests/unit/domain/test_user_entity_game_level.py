@@ -2,8 +2,6 @@
 
 from datetime import datetime, timezone
 
-import pytest
-
 from app.auth.domain.entities.user import UserEntity
 from app.auth.domain.value_objects import UserLevel
 from app.common.utils.id_generator import get_uuid7

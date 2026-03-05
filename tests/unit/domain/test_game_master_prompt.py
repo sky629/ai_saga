@@ -113,9 +113,10 @@ class TestBuildSystemPrompt:
             character_description="강한",
             dice_result_section=dice_section,
         )
+        assert "## 주사위 판정 결과" in prompt
         assert "🎲" in prompt
         assert "성공!" in prompt
-        assert "주사위 판정 결과는 절대적입니다" in prompt
+        assert "이미 나온 결과를 절대 뒤집지 마세요" in prompt
 
     def test_build_system_prompt_includes_dice_rules(self):
         """Test system prompt includes dice judgment rules."""
@@ -130,7 +131,7 @@ class TestBuildSystemPrompt:
         assert "실패 판정 시" in prompt
         assert "크리티컬(대성공)" in prompt
         assert "펌블(대실패)" in prompt
-        assert "판정 결과를 절대 뒤집지 마세요" in prompt
+        assert "이미 나온 결과를 절대 뒤집지 마세요" in prompt
 
     def test_build_system_prompt_empty_dice_section(self):
         """Test system prompt with empty dice result section."""
@@ -141,17 +142,21 @@ class TestBuildSystemPrompt:
             character_description="테스트",
             dice_result_section="",
         )
-        assert "## 주사위 판정 결과" in prompt
+        assert "## 주사위 판정 결과" not in prompt
 
-    def test_system_prompt_contains_dice_applied_in_json_format(self):
-        """Test system prompt JSON format includes dice_applied field."""
+    def test_system_prompt_keeps_original_json_schema(self):
+        """Test system prompt JSON format keeps original schema fields."""
         prompt = build_system_prompt(
             scenario_name="test",
             world_setting="test",
             character_name="test",
             character_description="test",
         )
-        assert "dice_applied" in prompt
+        assert '"narrative"' in prompt
+        assert '"options"' in prompt
+        assert '"state_changes"' in prompt
+        assert "before_narrative" not in prompt
+        assert "dice_applied" not in prompt
 
 
 class TestGameMasterPrompt:
@@ -252,7 +257,7 @@ class TestGameMasterPrompt:
             current_location="숲길",
         )
         system_prompt = prompt.system_prompt
-        assert "## 주사위 판정 결과" in system_prompt
+        assert "## 주사위 판정 결과" not in system_prompt
         assert "탐험" in system_prompt
 
     def test_game_master_prompt_build_action(self):

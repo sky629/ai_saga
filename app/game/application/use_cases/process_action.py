@@ -256,7 +256,9 @@ class ProcessActionUseCase:
         user_id: UUID,
         player_action: str,
         recent_messages: list[GameMessageEntity],
-    ) -> tuple[GameSessionEntity, GameActionResponse]:
+    ) -> tuple[
+        GameSessionEntity, Union[GameActionResponse, GameEndingResponse]
+    ]:
         """일반 턴 처리."""
         # Build prompt (도메인 서비스 활용)
         messages_for_llm = [
@@ -274,7 +276,7 @@ class ProcessActionUseCase:
         # Load scenario for difficulty context
         scenario = await self._scenario_repo.get_by_id(session.scenario_id)
         if not scenario:
-            raise ValueError(f"Scenario {session.scenario_id} not found")
+            raise ValueError("Scenario not found")
 
         character = await self._character_repo.get_by_id(session.character_id)
         if not character:
@@ -311,6 +313,7 @@ class ProcessActionUseCase:
         logger.info(f"[DEBUG] LLM response parsed: {parsed is not None}")
 
         dice_applied = False
+        before_narrative = None
         if parsed:
             # Extract structured data
             narrative = GameMasterService.extract_narrative_from_parsed(
@@ -329,6 +332,14 @@ class ProcessActionUseCase:
                     GameMasterService.filter_state_changes_on_dice_failure(
                         state_changes
                     )
+                )
+
+            resolved_hp_change = 0
+            if dice_result.is_fumble and dice_result.damage:
+                resolved_hp_change = -dice_result.damage
+            if resolved_hp_change != state_changes.hp_change:
+                state_changes = state_changes.model_copy(
+                    update={"hp_change": resolved_hp_change}
                 )
 
             # Update session state
@@ -415,16 +426,6 @@ class ProcessActionUseCase:
                             f"[DEBUG] Character save FAILED: {type(e).__name__}: {e}"
                         )
                         raise
-
-            if dice_applied and dice_result.is_fumble and dice_result.damage:
-                character = await self._character_repo.get_by_id(
-                    session.character_id
-                )
-                if character:
-                    character = character.update_stats(
-                        character.stats.take_damage(dice_result.damage)
-                    )
-                    await self._character_repo.save(character)
 
             character = await self._character_repo.get_by_id(
                 session.character_id

@@ -109,14 +109,14 @@ class DiceService:
     def perform_check(
         level: int,
         difficulty: ScenarioDifficulty,
-        check_type: DiceCheckType,
+        check_type: DiceCheckType = DiceCheckType.SKILL,
     ) -> DiceResult:
         """완전한 주사위 판정을 수행합니다.
 
         Args:
             level: 캐릭터 레벨
             difficulty: 시나리오 난이도
-            check_type: 주사위 체크 유형
+            check_type: 주사위 체크 유형 (기본값: SKILL)
 
         Returns:
             DiceResult: 판정 결과

@@ -80,6 +80,19 @@ class TestDiceResult:
         )
         assert result.is_success is True
 
+    def test_dice_result_is_success_false_on_fumble_even_with_high_modifier(
+        self,
+    ):
+        result = DiceResult(
+            roll=1,
+            modifier=20,
+            dc=10,
+            check_type=DiceCheckType.COMBAT,
+        )
+        assert result.total == 21
+        assert result.is_fumble is True
+        assert result.is_success is False
+
     def test_dice_result_is_critical_true(self):
         """Test is_critical is True when roll == 20."""
         result = DiceResult(

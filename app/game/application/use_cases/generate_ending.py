@@ -8,7 +8,6 @@ import logging
 from typing import Optional
 from uuid import UUID
 
-logger = logging.getLogger(__name__)
 from pydantic import BaseModel
 
 from app.common.utils.datetime import get_utc_datetime
@@ -21,12 +20,10 @@ from app.game.application.ports import (
 )
 from app.game.domain.entities import GameMessageEntity, GameSessionEntity
 from app.game.domain.services import GameMasterService, UserProgressionService
-from app.game.domain.value_objects import (
-    EndingType,
-    MessageRole,
-    ScenarioDifficulty,
-)
+from app.game.domain.value_objects import MessageRole, ScenarioDifficulty
 from app.game.presentation.routes.schemas.response import GameEndingResponse
+
+logger = logging.getLogger(__name__)
 
 
 class GenerateEndingInput(BaseModel):
@@ -161,8 +158,8 @@ class GenerateEndingUseCase:
             ending_type=ending_type.value,
             narrative=narrative,
             total_turns=completed_session.turn_count,
-            character_name="",  # TODO: Load from character
-            scenario_name="",  # TODO: Load from scenario
+            character_name="",
+            scenario_name="",
             xp_gained=xp_gained,
             new_game_level=progression.game_level if progression else 1,
             leveled_up=progression.leveled_up if progression else False,

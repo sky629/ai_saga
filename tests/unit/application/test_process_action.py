@@ -499,7 +499,7 @@ class TestScenarioLoading:
             idempotency_key="scenario-not-found-key",
         )
 
-        with pytest.raises(ValueError, match="Scenario .* not found"):
+        with pytest.raises(ValueError, match="Scenario not found"):
             await use_case.execute(active_session.user_id, input_data)
 
 

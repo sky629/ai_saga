@@ -164,6 +164,17 @@ class TestDiceServiceRollFumbleDamage:
 class TestDiceServicePerformCheck:
     """perform_check method tests."""
 
+    def test_perform_check_defaults_to_skill_check_type(self):
+        with patch(
+            "app.game.domain.services.dice_service.random.randint"
+        ) as mock_randint:
+            mock_randint.return_value = 15
+            result = DiceService.perform_check(
+                level=5,
+                difficulty=ScenarioDifficulty.NORMAL,
+            )
+            assert result.check_type == DiceCheckType.SKILL
+
     def test_perform_check_returns_dice_result(self):
         """Test perform_check returns a DiceResult."""
         with patch(

@@ -211,6 +211,48 @@ class TestDiceIntegration:
         assert result.response.dice_result.damage > 0
 
     @pytest.mark.asyncio
+    async def test_server_overrides_llm_hp_change_without_dice_applied_flag(
+        self, mock_repositories, active_session, character, scenario
+    ):
+        mock_repositories["cache_service"].get.return_value = None
+        mock_repositories["session_repository"].get_by_id.return_value = (
+            active_session
+        )
+        mock_repositories["character_repository"].get_by_id.return_value = (
+            character
+        )
+        mock_repositories["scenario_repository"].get_by_id.return_value = (
+            scenario
+        )
+        mock_repositories[
+            "embedding_service"
+        ].generate_embedding.return_value = [0.1, 0.2, 0.3]
+
+        mock_llm_response = MagicMock()
+        mock_llm_response.content = '{"narrative": "Success!", "options": ["Option 1"], "dice_applied": false, "state_changes": {"hp_change": -50}}'
+        mock_llm_response.usage.total_tokens = 100
+        mock_repositories["llm_service"].generate_response.return_value = (
+            mock_llm_response
+        )
+
+        with patch(
+            "app.game.domain.services.dice_service.random.randint"
+        ) as mock_randint:
+            mock_randint.return_value = 15
+
+            use_case = ProcessActionUseCase(**mock_repositories)
+            input_data = ProcessActionInput(
+                session_id=active_session.id,
+                action="attack",
+                idempotency_key="test-key",
+            )
+
+            result = await use_case.execute(active_session.user_id, input_data)
+
+        assert result.response.dice_result is None
+        mock_repositories["character_repository"].save.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_fumble_self_damage(
         self, mock_repositories, active_session, character, scenario
     ):
@@ -266,6 +308,74 @@ class TestDiceIntegration:
         assert result.response.dice_result.damage is not None
         # HP should be reduced by fumble damage (1d4)
         assert updated_hp < character.stats.hp
+
+    @pytest.mark.asyncio
+    async def test_fumble_self_damage_applies_when_dice_not_applied(
+        self, mock_repositories, active_session, character, scenario
+    ):
+        low_hp_character = CharacterEntity(
+            id=character.id,
+            user_id=character.user_id,
+            scenario_id=character.scenario_id,
+            name=character.name,
+            description=character.description,
+            stats=CharacterStats(hp=10, max_hp=100, level=5),
+            inventory=[],
+            is_active=True,
+            created_at=character.created_at,
+        )
+
+        mock_repositories["cache_service"].get.return_value = None
+        mock_repositories["session_repository"].get_by_id.return_value = (
+            active_session
+        )
+
+        current_character = low_hp_character
+
+        async def get_character_by_id(char_id):
+            return current_character
+
+        async def save_character(saved_character):
+            nonlocal current_character
+            current_character = saved_character
+            return saved_character
+
+        mock_repositories["character_repository"].get_by_id.side_effect = (
+            get_character_by_id
+        )
+        mock_repositories["character_repository"].save.side_effect = (
+            save_character
+        )
+        mock_repositories["scenario_repository"].get_by_id.return_value = (
+            scenario
+        )
+        mock_repositories[
+            "embedding_service"
+        ].generate_embedding.return_value = [0.1, 0.2, 0.3]
+
+        mock_llm_response = MagicMock()
+        mock_llm_response.content = '{"narrative": "Fumble!", "options": ["Option 1"], "dice_applied": false, "state_changes": {"hp_change": 0}}'
+        mock_llm_response.usage.total_tokens = 100
+        mock_repositories["llm_service"].generate_response.return_value = (
+            mock_llm_response
+        )
+
+        with patch(
+            "app.game.domain.services.dice_service.random.randint"
+        ) as mock_randint:
+            mock_randint.side_effect = [1, 2]
+
+            use_case = ProcessActionUseCase(**mock_repositories)
+            input_data = ProcessActionInput(
+                session_id=active_session.id,
+                action="attack",
+                idempotency_key="test-key",
+            )
+
+            result = await use_case.execute(active_session.user_id, input_data)
+
+        assert result.response.dice_result is None
+        assert current_character.stats.hp == 8
 
     @pytest.mark.asyncio
     async def test_hp_zero_death(

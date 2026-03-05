@@ -38,7 +38,7 @@ class GameMasterService:
             character: 현재 캐릭터
 
         Returns:
-            캐릭터가 사망했는지 여부 (HP <= 0)
+            캐릭터가 생존하지 않는지 여부
         """
         return not character.is_alive
 

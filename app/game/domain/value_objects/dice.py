@@ -44,6 +44,8 @@ class DiceResult(BaseModel):
     @property
     def is_success(self) -> bool:
         """합계가 DC 이상이면 성공."""
+        if self.is_fumble:
+            return False
         return self.total >= self.dc
 
     @computed_field
