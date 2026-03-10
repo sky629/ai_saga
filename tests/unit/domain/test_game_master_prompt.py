@@ -144,8 +144,8 @@ class TestBuildSystemPrompt:
         )
         assert "## 주사위 판정 결과" not in prompt
 
-    def test_system_prompt_keeps_original_json_schema(self):
-        """Test system prompt JSON format keeps original schema fields."""
+    def test_system_prompt_includes_interactive_dice_json_schema(self):
+        """Test system prompt keeps interactive dice response fields."""
         prompt = build_system_prompt(
             scenario_name="test",
             world_setting="test",
@@ -155,8 +155,8 @@ class TestBuildSystemPrompt:
         assert '"narrative"' in prompt
         assert '"options"' in prompt
         assert '"state_changes"' in prompt
-        assert "before_narrative" not in prompt
-        assert "dice_applied" not in prompt
+        assert '"before_narrative"' in prompt
+        assert '"dice_applied"' in prompt
 
 
 class TestGameMasterPrompt:
