@@ -154,6 +154,7 @@ class TestBuildSystemPrompt:
         )
         assert '"narrative"' in prompt
         assert '"options"' in prompt
+        assert '"action_type"' in prompt
         assert '"state_changes"' in prompt
         assert '"before_narrative"' in prompt
         assert '"dice_applied"' in prompt

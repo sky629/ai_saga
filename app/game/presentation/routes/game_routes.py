@@ -361,6 +361,7 @@ async def submit_action(
     input_data = ProcessActionInput(
         session_id=session_id,
         action=request.action,
+        action_type=request.action_type,
         idempotency_key=idempotency_key,
     )
 

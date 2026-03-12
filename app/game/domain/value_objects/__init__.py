@@ -1,5 +1,6 @@
 """Game Domain Value Objects - Enums for type safety."""
 
+from .action_type import ActionType
 from .dice import DiceCheckType, DiceResult
 from .ending_type import EndingType
 from .game_state import GameState, StateChanges
@@ -10,6 +11,7 @@ from .session_status import SessionStatus
 
 __all__ = [
     "SessionStatus",
+    "ActionType",
     "EndingType",
     "MessageRole",
     "ScenarioDifficulty",

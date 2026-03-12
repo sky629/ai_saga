@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Generic, Optional, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 T = TypeVar("T")
 
@@ -146,13 +146,33 @@ class DiceResultResponse(BaseModel):
     display_text: str
 
 
+class ActionOptionResponse(BaseModel):
+    """Typed action option response model."""
+
+    label: str
+    action_type: str
+    requires_dice: bool
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_string_option(cls, value):
+        """기존 문자열 옵션을 typed option으로 호환 변환."""
+        if isinstance(value, str):
+            return {
+                "label": value,
+                "action_type": "observation",
+                "requires_dice": False,
+            }
+        return value
+
+
 class GameActionResponse(BaseModel):
     """Response for a game action."""
 
     message: GameMessageResponse
     narrative: str
     before_roll_narrative: Optional[str] = None
-    options: list[str]
+    options: list[ActionOptionResponse]
     turn_count: int
     max_turns: int
     is_ending: bool = False

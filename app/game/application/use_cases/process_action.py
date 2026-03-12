@@ -37,6 +37,7 @@ from app.game.domain.services import (
     UserProgressionService,
 )
 from app.game.domain.value_objects import (
+    ActionType,
     EndingType,
     GameState,
     MessageRole,
@@ -47,6 +48,7 @@ from app.game.domain.value_objects.scenario_difficulty import (
     ScenarioDifficulty,
 )
 from app.game.presentation.routes.schemas.response import (
+    ActionOptionResponse,
     DiceResultResponse,
     GameActionResponse,
     GameEndingResponse,
@@ -69,6 +71,7 @@ class ProcessActionInput(BaseModel):
 
     session_id: UUID
     action: str
+    action_type: Optional[str] = None
     idempotency_key: str
 
 
@@ -113,7 +116,9 @@ class ProcessActionUseCase:
     ) -> ProcessActionResult:
         """유스케이스 실행."""
         # 1. Idempotency Check
-        payload_hash = self._compute_action_payload_hash(input_data.action)
+        payload_hash = self._compute_action_payload_hash(
+            input_data.action, input_data.action_type
+        )
         cache_key = f"game:idempotency:{input_data.session_id}:{input_data.idempotency_key}"
         cached_data = await self._cache.get(cache_key)
         if cached_data:
@@ -205,6 +210,7 @@ class ProcessActionUseCase:
                 session,
                 user_id,
                 input_data.action,
+                input_data.action_type,
                 all_context_messages,
             )
 
@@ -255,6 +261,7 @@ class ProcessActionUseCase:
         session: GameSessionEntity,
         user_id: UUID,
         player_action: str,
+        action_type_hint: Optional[str],
         recent_messages: list[GameMessageEntity],
     ) -> tuple[
         GameSessionEntity, Union[GameActionResponse, GameEndingResponse]
@@ -282,14 +289,21 @@ class ProcessActionUseCase:
         if not character:
             raise ValueError(f"Character {session.character_id} not found")
 
-        check_type = self._infer_dice_check_type(player_action)
-        dice_result = DiceService.perform_check(
-            level=character.stats.level,
-            difficulty=scenario.difficulty,
-            check_type=check_type,
+        action_type = self._resolve_action_type(
+            player_action, action_type_hint
         )
+        should_apply_dice = action_type.requires_dice
+        dice_result = None
+        dice_result_section = ""
 
-        dice_result_section = build_dice_result_section(dice_result)
+        if should_apply_dice:
+            check_type = self._to_dice_check_type(action_type)
+            dice_result = DiceService.perform_check(
+                level=character.stats.level,
+                difficulty=scenario.difficulty,
+                check_type=check_type,
+            )
+            dice_result_section = build_dice_result_section(dice_result)
 
         prompt = GameMasterPrompt(
             scenario_name=scenario.name,
@@ -319,15 +333,26 @@ class ProcessActionUseCase:
             narrative = GameMasterService.extract_narrative_from_parsed(
                 parsed, llm_response.content
             )
-            options = GameMasterService.extract_options_from_parsed(parsed)
-            dice_applied = GameMasterService.extract_dice_applied(parsed)
-            state_changes = GameMasterService.extract_state_changes(parsed)
-            before_narrative = (
-                GameMasterService.extract_before_narrative_from_parsed(parsed)
+            options = self._normalize_action_options(
+                GameMasterService.extract_options_from_parsed(parsed)
             )
+            dice_applied = should_apply_dice and (
+                GameMasterService.extract_dice_applied(parsed)
+            )
+            state_changes = GameMasterService.extract_state_changes(parsed)
+            if dice_applied:
+                before_narrative = (
+                    GameMasterService.extract_before_narrative_from_parsed(
+                        parsed
+                    )
+                )
 
             # Filter state_changes if dice check failed
-            if dice_applied and not dice_result.is_success:
+            if (
+                dice_applied
+                and dice_result is not None
+                and not dice_result.is_success
+            ):
                 state_changes = (
                     GameMasterService.filter_state_changes_on_dice_failure(
                         state_changes
@@ -335,7 +360,11 @@ class ProcessActionUseCase:
                 )
 
             resolved_hp_change = 0
-            if dice_result.is_fumble and dice_result.damage:
+            if (
+                dice_result is not None
+                and dice_result.is_fumble
+                and dice_result.damage
+            ):
                 resolved_hp_change = -dice_result.damage
             if resolved_hp_change != state_changes.hp_change:
                 state_changes = state_changes.model_copy(
@@ -446,8 +475,8 @@ class ProcessActionUseCase:
             )
 
             narrative = llm_response.content
-            options = GameMasterService.extract_action_options(
-                llm_response.content
+            options = self._normalize_action_options(
+                GameMasterService.extract_action_options(llm_response.content)
             )
 
         image_url = None
@@ -474,7 +503,7 @@ class ProcessActionUseCase:
         await self._message_repo.create(ai_message)
 
         dice_result_response = None
-        if parsed and dice_applied:
+        if parsed and dice_applied and dice_result is not None:
             dice_result_response = DiceResultResponse(
                 roll=dice_result.roll,
                 modifier=dice_result.modifier,
@@ -703,7 +732,9 @@ class ProcessActionUseCase:
         )
 
     @staticmethod
-    def _compute_action_payload_hash(action: str) -> str:
+    def _compute_action_payload_hash(
+        action: str, action_type: Optional[str] = None
+    ) -> str:
         payload = {"action": action}
         return hashlib.sha256(
             json.dumps(payload, sort_keys=True).encode("utf-8")
@@ -741,7 +772,20 @@ class ProcessActionUseCase:
         )
 
     @staticmethod
-    def _infer_dice_check_type(action: str) -> DiceCheckType:
+    def _resolve_action_type(
+        action: str, action_type_hint: Optional[str] = None
+    ) -> ActionType:
+        # TODO: 현재는 서버 규칙 기반 분류를 사용한다.
+        # 추후에는 ActionClassifier 인터페이스로 분리하고,
+        # 애매한 자유 입력은 경량 로컬 LLM 분류 엔진으로 대체한다.
+        # 단, 메인 게임 LLM 호출은 턴당 1회 원칙을 유지하고
+        # 최종 requires_dice 결정 권한은 서버가 가진다.
+        if action_type_hint:
+            logger.info(
+                "Received action_type hint '%s'; server inference remains authoritative",
+                action_type_hint,
+            )
+
         normalized = action.lower().strip()
 
         combat_keywords = [
@@ -757,12 +801,9 @@ class ProcessActionUseCase:
             "사격",
         ]
         social_keywords = [
-            "talk",
-            "speak",
             "persuade",
             "threaten",
             "negotiate",
-            "대화",
             "설득",
             "협상",
             "위협",
@@ -776,15 +817,120 @@ class ProcessActionUseCase:
             "pick lock",
             "해킹",
             "자물쇠",
-            "함정",
+            "함정 해제",
             "제작",
             "수리",
         ]
+        rest_keywords = [
+            "rest",
+            "wait",
+            "sleep",
+            "camp",
+            "휴식",
+            "쉰",
+            "대기",
+            "잔다",
+        ]
+        observation_keywords = [
+            "look",
+            "observe",
+            "inspect",
+            "search",
+            "살핀",
+            "본다",
+            "관찰",
+            "조사",
+        ]
+        movement_keywords = [
+            "move",
+            "walk",
+            "go",
+            "이동",
+            "간다",
+            "걷",
+        ]
+        exploration_keywords = [
+            "잠입",
+            "탈출",
+            "도망",
+            "숨",
+            "엄폐",
+            "점프",
+            "기어오르",
+            "등반",
+            "건너",
+            "열",
+            "밀",
+            "sneak",
+            "escape",
+            "hide",
+            "jump",
+            "climb",
+            "cross",
+            "open",
+            "push",
+        ]
 
         if any(keyword in normalized for keyword in combat_keywords):
-            return DiceCheckType.COMBAT
+            return ActionType.COMBAT
         if any(keyword in normalized for keyword in social_keywords):
-            return DiceCheckType.SOCIAL
+            return ActionType.SOCIAL
         if any(keyword in normalized for keyword in skill_keywords):
+            return ActionType.SKILL
+        if any(keyword in normalized for keyword in exploration_keywords):
+            return ActionType.EXPLORATION
+        if any(keyword in normalized for keyword in rest_keywords):
+            return ActionType.REST
+        if any(keyword in normalized for keyword in observation_keywords):
+            return ActionType.OBSERVATION
+        if any(keyword in normalized for keyword in movement_keywords):
+            return ActionType.MOVEMENT
+        return ActionType.EXPLORATION
+
+    @staticmethod
+    def _to_dice_check_type(action_type: ActionType) -> DiceCheckType:
+        if action_type == ActionType.COMBAT:
+            return DiceCheckType.COMBAT
+        if action_type == ActionType.SOCIAL:
+            return DiceCheckType.SOCIAL
+        if action_type == ActionType.SKILL:
             return DiceCheckType.SKILL
         return DiceCheckType.EXPLORATION
+
+    def _normalize_action_options(
+        self, raw_options: list[object]
+    ) -> list[ActionOptionResponse]:
+        normalized_options = []
+
+        for option in raw_options:
+            if isinstance(option, dict):
+                label = str(option.get("label", "")).strip()
+                inferred_type = self._resolve_action_type(
+                    label,
+                    (
+                        str(option.get("action_type"))
+                        if option.get("action_type")
+                        else None
+                    ),
+                )
+            else:
+                label = str(option).strip()
+                inferred_type = self._resolve_action_type(label)
+
+            if not label:
+                continue
+
+            normalized_options.append(
+                ActionOptionResponse(
+                    label=label,
+                    action_type=inferred_type.value,
+                    requires_dice=inferred_type.requires_dice,
+                )
+            )
+
+        return normalized_options
+
+    @staticmethod
+    def _should_apply_dice_check(action: str) -> bool:
+        """Deprecated shim for legacy tests."""
+        return ProcessActionUseCase._resolve_action_type(action).requires_dice

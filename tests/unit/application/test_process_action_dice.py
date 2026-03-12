@@ -10,21 +10,25 @@ from app.game.application.use_cases.process_action import (
     ProcessActionUseCase,
 )
 from app.game.domain.entities import CharacterEntity, CharacterStats
-from app.game.domain.value_objects import ScenarioDifficulty, SessionStatus
+from app.game.domain.value_objects import (
+    ActionType,
+    ScenarioDifficulty,
+    SessionStatus,
+)
 from app.game.domain.value_objects.dice import DiceCheckType, DiceResult
 
 
 @pytest.mark.parametrize(
     ("action", "expected"),
     [
-        ("적을 공격한다", DiceCheckType.COMBAT),
-        ("상인을 설득한다", DiceCheckType.SOCIAL),
-        ("자물쇠를 해제한다", DiceCheckType.SKILL),
-        ("북쪽으로 이동한다", DiceCheckType.EXPLORATION),
+        ("적을 공격한다", ActionType.COMBAT),
+        ("상인을 설득한다", ActionType.SOCIAL),
+        ("자물쇠를 해제한다", ActionType.SKILL),
+        ("북쪽으로 이동한다", ActionType.MOVEMENT),
     ],
 )
-def test_infer_dice_check_type(action, expected):
-    assert ProcessActionUseCase._infer_dice_check_type(action) == expected
+def test_resolve_action_type(action, expected):
+    assert ProcessActionUseCase._resolve_action_type(action) == expected
 
 
 @pytest.fixture
@@ -165,6 +169,9 @@ class TestDiceIntegration:
         assert result.response.dice_result.dc == 12  # NORMAL difficulty
         assert result.response.dice_result.is_success is True
         assert result.response.dice_result.check_type == "combat"
+        assert result.response.options[0].label == "Option 1"
+        assert result.response.options[0].action_type == "exploration"
+        assert result.response.options[0].requires_dice is True
 
     @pytest.mark.asyncio
     async def test_critical_hit(
@@ -251,6 +258,206 @@ class TestDiceIntegration:
 
         assert result.response.dice_result is None
         mock_repositories["character_repository"].save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_server_ignores_llm_dice_flag_for_simple_movement(
+        self, mock_repositories, active_session, character, scenario
+    ):
+        mock_repositories["cache_service"].get.return_value = None
+        mock_repositories["session_repository"].get_by_id.return_value = (
+            active_session
+        )
+        mock_repositories["character_repository"].get_by_id.return_value = (
+            character
+        )
+        mock_repositories["scenario_repository"].get_by_id.return_value = (
+            scenario
+        )
+        mock_repositories[
+            "embedding_service"
+        ].generate_embedding.return_value = [0.1, 0.2, 0.3]
+
+        mock_llm_response = MagicMock()
+        mock_llm_response.content = (
+            '{"before_narrative": "당신은 북쪽 통로로 발을 옮깁니다.", '
+            '"narrative": "당신은 북쪽 통로로 이동합니다.", '
+            '"options": ["주변을 살핀다"], '
+            '"dice_applied": true, '
+            '"state_changes": {"location": "북쪽 통로"}}'
+        )
+        mock_llm_response.usage.total_tokens = 100
+        mock_repositories["llm_service"].generate_response.return_value = (
+            mock_llm_response
+        )
+
+        with patch(
+            "app.game.domain.services.dice_service.random.randint"
+        ) as mock_randint:
+            use_case = ProcessActionUseCase(**mock_repositories)
+            input_data = ProcessActionInput(
+                session_id=active_session.id,
+                action="북쪽으로 이동한다",
+                idempotency_key="move-no-dice-key",
+            )
+
+            result = await use_case.execute(active_session.user_id, input_data)
+
+        assert result.response.dice_result is None
+        assert result.response.before_roll_narrative is None
+        mock_randint.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_client_action_type_hint_cannot_bypass_combat_dice(
+        self, mock_repositories, active_session, character, scenario
+    ):
+        mock_repositories["cache_service"].get.return_value = None
+        mock_repositories["session_repository"].get_by_id.return_value = (
+            active_session
+        )
+        mock_repositories["character_repository"].get_by_id.return_value = (
+            character
+        )
+        mock_repositories["scenario_repository"].get_by_id.return_value = (
+            scenario
+        )
+        mock_repositories[
+            "embedding_service"
+        ].generate_embedding.return_value = [0.1, 0.2, 0.3]
+
+        mock_llm_response = MagicMock()
+        mock_llm_response.content = (
+            '{"before_narrative": "당신은 검을 들어올립니다.", '
+            '"narrative": "검격이 적중합니다.", '
+            '"options": ["계속 공격한다"], '
+            '"dice_applied": true, '
+            '"state_changes": {"hp_change": 0}}'
+        )
+        mock_llm_response.usage.total_tokens = 100
+        mock_repositories["llm_service"].generate_response.return_value = (
+            mock_llm_response
+        )
+
+        with patch(
+            "app.game.domain.services.dice_service.random.randint"
+        ) as mock_randint:
+            mock_randint.return_value = 15
+
+            use_case = ProcessActionUseCase(**mock_repositories)
+            input_data = ProcessActionInput(
+                session_id=active_session.id,
+                action="고블린을 공격한다",
+                action_type="movement",
+                idempotency_key="combat-hint-bypass-key",
+            )
+
+            result = await use_case.execute(active_session.user_id, input_data)
+
+        assert result.response.dice_result is not None
+        assert result.response.dice_result.check_type == "combat"
+        mock_randint.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_unclassified_free_form_action_falls_back_to_dice_check(
+        self, mock_repositories, active_session, character, scenario
+    ):
+        mock_repositories["cache_service"].get.return_value = None
+        mock_repositories["session_repository"].get_by_id.return_value = (
+            active_session
+        )
+        mock_repositories["character_repository"].get_by_id.return_value = (
+            character
+        )
+        mock_repositories["scenario_repository"].get_by_id.return_value = (
+            scenario
+        )
+        mock_repositories[
+            "embedding_service"
+        ].generate_embedding.return_value = [0.1, 0.2, 0.3]
+
+        mock_llm_response = MagicMock()
+        mock_llm_response.content = (
+            '{"before_narrative": "당신은 무거운 석상을 밀어봅니다.", '
+            '"narrative": "석상이 삐걱이며 움직입니다.", '
+            '"options": ["안쪽을 확인한다"], '
+            '"dice_applied": true, '
+            '"state_changes": {"discoveries": ["숨겨진 통로"]}}'
+        )
+        mock_llm_response.usage.total_tokens = 100
+        mock_repositories["llm_service"].generate_response.return_value = (
+            mock_llm_response
+        )
+
+        with patch(
+            "app.game.domain.services.dice_service.random.randint"
+        ) as mock_randint:
+            mock_randint.return_value = 14
+
+            use_case = ProcessActionUseCase(**mock_repositories)
+            input_data = ProcessActionInput(
+                session_id=active_session.id,
+                action="석상을 밀어 숨겨진 통로가 있는지 본다",
+                idempotency_key="free-form-dice-key",
+            )
+
+            result = await use_case.execute(active_session.user_id, input_data)
+
+        assert result.response.dice_result is not None
+        assert result.response.dice_result.check_type == "exploration"
+        mock_randint.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_persisted_parsed_response_keeps_raw_llm_option_schema(
+        self, mock_repositories, active_session, character, scenario
+    ):
+        mock_repositories["cache_service"].get.return_value = None
+        mock_repositories["session_repository"].get_by_id.return_value = (
+            active_session
+        )
+        mock_repositories["character_repository"].get_by_id.return_value = (
+            character
+        )
+        mock_repositories["scenario_repository"].get_by_id.return_value = (
+            scenario
+        )
+        mock_repositories[
+            "embedding_service"
+        ].generate_embedding.return_value = [0.1, 0.2, 0.3]
+
+        mock_llm_response = MagicMock()
+        mock_llm_response.content = (
+            '{"narrative": "테스트", '
+            '"options": ["Option 1", "Option 2"], '
+            '"dice_applied": false, '
+            '"state_changes": {"hp_change": 0}}'
+        )
+        mock_llm_response.usage.total_tokens = 100
+        mock_repositories["llm_service"].generate_response.return_value = (
+            mock_llm_response
+        )
+
+        with patch(
+            "app.game.domain.services.dice_service.random.randint"
+        ) as mock_randint:
+            mock_randint.return_value = 15
+
+            use_case = ProcessActionUseCase(**mock_repositories)
+            input_data = ProcessActionInput(
+                session_id=active_session.id,
+                action="attack",
+                idempotency_key="parsed-response-schema-key",
+            )
+
+            await use_case.execute(active_session.user_id, input_data)
+
+        saved_ai_message = (
+            mock_repositories["message_repository"]
+            .create.await_args_list[-1]
+            .args[0]
+        )
+        assert saved_ai_message.parsed_response["options"] == [
+            "Option 1",
+            "Option 2",
+        ]
 
     @pytest.mark.asyncio
     async def test_fumble_self_damage(

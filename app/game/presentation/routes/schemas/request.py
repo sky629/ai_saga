@@ -31,3 +31,6 @@ class GameActionRequest(BaseModel):
     """Request for a player action in the game."""
 
     action: str = Field(..., min_length=1, max_length=1000)
+    action_type: Optional[str] = Field(
+        None, description="선택지 클릭 등으로 전달된 액션 타입"
+    )
