@@ -26,6 +26,8 @@ from app.game.domain.value_objects.dice import DiceCheckType, DiceResult
         ("자물쇠를 해제한다", ActionType.SKILL),
         ("북쪽으로 이동한다", ActionType.MOVEMENT),
         ("칼을 뽑는다", ActionType.OBSERVATION),
+        ("칼을 뽑고 탈출한다", ActionType.EXPLORATION),
+        ("무기를 꺼내 문을 연다", ActionType.EXPLORATION),
         (
             "칼을 든 채 경비병들을 노려본다. 그러다가 경비병이 한 눈 판 사이에 칼을 휘두른다",
             ActionType.COMBAT,

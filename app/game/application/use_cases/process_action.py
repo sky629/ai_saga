@@ -894,6 +894,7 @@ class ProcessActionUseCase:
             "등반",
             "건너",
             "열",
+            "연다",
             "밀",
             "sneak",
             "escape",
@@ -911,12 +912,12 @@ class ProcessActionUseCase:
             return ActionType.SOCIAL
         if any(keyword in normalized for keyword in skill_keywords):
             return ActionType.SKILL
-        if any(keyword in normalized for keyword in preparation_keywords):
-            return ActionType.OBSERVATION
         if any(keyword in normalized for keyword in exploration_keywords):
             return ActionType.EXPLORATION
         if any(keyword in normalized for keyword in rest_keywords):
             return ActionType.REST
+        if any(keyword in normalized for keyword in preparation_keywords):
+            return ActionType.OBSERVATION
         if any(keyword in normalized for keyword in observation_keywords):
             return ActionType.OBSERVATION
         if any(keyword in normalized for keyword in movement_keywords):
