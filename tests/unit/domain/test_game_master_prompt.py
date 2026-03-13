@@ -118,6 +118,18 @@ class TestBuildSystemPrompt:
         assert "성공!" in prompt
         assert "이미 나온 결과를 절대 뒤집지 마세요" in prompt
 
+    def test_build_system_prompt_forbids_inventing_missing_items(self):
+        """Test system prompt forbids inventing items not in inventory."""
+        prompt = build_system_prompt(
+            scenario_name="생존",
+            world_setting="폐허 도시",
+            character_name="생존자",
+            character_description="부상당한 생존자",
+            game_state_section="- 인벤토리: 빈 물통",
+        )
+        assert "인벤토리" in prompt
+        assert "없는 무기" in prompt or "없는 아이템" in prompt
+
     def test_build_system_prompt_includes_dice_rules(self):
         """Test system prompt includes dice judgment rules."""
         prompt = build_system_prompt(

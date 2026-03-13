@@ -73,6 +73,9 @@ class Settings(BaseSettings):
 
     # CORS
     allowed_origins: str = "http://localhost:3000,http://localhost:8080"
+    frontend_login_success_url: str = (
+        "http://localhost:5173/auth/login/success"
+    )
 
     # Sentry
     sentry_dsn: str = ""

@@ -368,8 +368,6 @@ async def submit_action(
     # Endpoint-level Distributed Lock
     lock_key = f"game:action:{session_id}"
     async with cache_service.lock(lock_key, ttl_ms=20000):  # 20s lock
-        # TODO: llm 응답을 입력으로 이미지를 생성해서 같이 반환
-
         try:
             result = await use_case.execute(current_user.id, input_data)
         except ValueError as e:

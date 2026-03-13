@@ -1,9 +1,21 @@
 """Test authentication routes."""
 
+from datetime import datetime, timezone
+
 from fastapi.testclient import TestClient
 
+from app.auth.application.use_cases.handle_oauth_callback import (
+    OAuthCallbackResult,
+)
 from app.auth.application.use_cases.refresh_token import RefreshTokenResult
-from app.auth.dependencies import get_refresh_token_use_case
+from app.auth.dependencies import (
+    get_handle_oauth_callback_use_case,
+    get_refresh_token_use_case,
+)
+from app.auth.domain.entities.user import UserEntity
+from app.auth.domain.value_objects import UserLevel
+from app.common.utils.id_generator import get_uuid7
+from config.settings import settings
 
 
 class TestAuthRoutes:
@@ -170,3 +182,56 @@ def test_refresh_token_sets_rotated_cookie(app):
     assert response.status_code == 200
     assert response.json()["access_token"] == "new-access"
     assert "refresh_token=new-refresh-token" in response.headers["set-cookie"]
+
+
+def test_google_callback_redirects_to_configured_frontend_url(
+    app, monkeypatch
+):
+    """Test Google callback uses configured frontend success URL."""
+
+    class FakeOAuthCallbackUseCase:
+        async def execute(self, input_data):
+            del input_data
+            now = datetime.now(timezone.utc)
+            return OAuthCallbackResult(
+                user=UserEntity(
+                    id=get_uuid7(),
+                    email="test@example.com",
+                    name="Test User",
+                    profile_image_url=None,
+                    user_level=UserLevel.NORMAL,
+                    is_active=True,
+                    email_verified=True,
+                    created_at=now,
+                    updated_at=now,
+                    last_login_at=now,
+                ),
+                access_token="issued-access-token",
+                refresh_token="issued-refresh-token",
+                expires_in=1800,
+                is_new_user=True,
+            )
+
+    frontend_url = "http://localhost:4173/auth/callback/success"
+    monkeypatch.setattr(settings, "frontend_login_success_url", frontend_url)
+
+    app.dependency_overrides[get_handle_oauth_callback_use_case] = (
+        lambda: FakeOAuthCallbackUseCase()
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/v1/auth/google/callback/",
+        params={"code": "oauth-code", "state": "oauth-state"},
+        follow_redirects=False,
+    )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 307
+    assert response.headers["location"] == (
+        f"{frontend_url}?access_token=issued-access-token&new_user=true"
+    )
+    assert (
+        "refresh_token=issued-refresh-token" in response.headers["set-cookie"]
+    )

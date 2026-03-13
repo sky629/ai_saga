@@ -564,6 +564,114 @@ class TestDiceIntegration:
         ]
 
     @pytest.mark.asyncio
+    async def test_persisted_parsed_response_keeps_failed_dice_hp_change_when_applied(
+        self, mock_repositories, active_session, character, scenario
+    ):
+        mock_repositories["cache_service"].get.return_value = None
+        mock_repositories["session_repository"].get_by_id.return_value = (
+            active_session
+        )
+        mock_repositories["character_repository"].get_by_id.return_value = (
+            character
+        )
+        mock_repositories["scenario_repository"].get_by_id.return_value = (
+            scenario
+        )
+        mock_repositories[
+            "embedding_service"
+        ].generate_embedding.return_value = [0.1, 0.2, 0.3]
+
+        mock_llm_response = MagicMock()
+        mock_llm_response.content = (
+            '{"narrative": "실패했지만 큰 상처를 입습니다.", '
+            '"options": ["Option 1"], '
+            '"dice_applied": true, '
+            '"state_changes": {"hp_change": -5}}'
+        )
+        mock_llm_response.usage.total_tokens = 100
+        mock_repositories["llm_service"].generate_response.return_value = (
+            mock_llm_response
+        )
+
+        with patch(
+            "app.game.domain.services.dice_service.random.randint"
+        ) as mock_randint:
+            mock_randint.return_value = 9
+
+            use_case = ProcessActionUseCase(**mock_repositories)
+            input_data = ProcessActionInput(
+                session_id=active_session.id,
+                action="문을 힘으로 연다",
+                idempotency_key="sanitized-hp-failed-dice-key",
+            )
+
+            await use_case.execute(active_session.user_id, input_data)
+
+        saved_ai_message = (
+            mock_repositories["message_repository"]
+            .create.await_args_list[-1]
+            .args[0]
+        )
+        assert (
+            saved_ai_message.parsed_response["state_changes"]["hp_change"]
+            == -5
+        )
+
+    @pytest.mark.asyncio
+    async def test_persisted_parsed_response_uses_fumble_damage_for_hp_change(
+        self, mock_repositories, active_session, character, scenario
+    ):
+        mock_repositories["cache_service"].get.return_value = None
+        mock_repositories["session_repository"].get_by_id.return_value = (
+            active_session
+        )
+        mock_repositories["character_repository"].get_by_id.return_value = (
+            character
+        )
+        mock_repositories["scenario_repository"].get_by_id.return_value = (
+            scenario
+        )
+        mock_repositories[
+            "embedding_service"
+        ].generate_embedding.return_value = [0.1, 0.2, 0.3]
+
+        mock_llm_response = MagicMock()
+        mock_llm_response.content = (
+            '{"narrative": "대실패!", '
+            '"options": ["Option 1"], '
+            '"dice_applied": true, '
+            '"state_changes": {"hp_change": 0}}'
+        )
+        mock_llm_response.usage.total_tokens = 100
+        mock_repositories["llm_service"].generate_response.return_value = (
+            mock_llm_response
+        )
+
+        with patch(
+            "app.game.domain.services.dice_service.random.randint"
+        ) as mock_randint:
+            mock_randint.side_effect = [1, 2]
+
+            use_case = ProcessActionUseCase(**mock_repositories)
+            input_data = ProcessActionInput(
+                session_id=active_session.id,
+                action="적에게 돌진한다",
+                idempotency_key="sanitized-hp-fumble-key",
+            )
+
+            await use_case.execute(active_session.user_id, input_data)
+
+        saved_ai_message = (
+            mock_repositories["message_repository"]
+            .create.await_args_list[-1]
+            .args[0]
+        )
+        assert (
+            saved_ai_message.parsed_response["state_changes"]["hp_change"]
+            == -2
+        )
+
+    @pytest.mark.asyncio
     async def test_fumble_self_damage(
         self, mock_repositories, active_session, character, scenario
     ):

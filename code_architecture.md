@@ -1,243 +1,381 @@
-# AI Saga 백엔드 코드 구조
+# AI Saga 백엔드 코드 아키텍처
 
-이 문서는 현재 저장소 기준으로 백엔드 디렉토리 구조와 각 파일의
-책임을 정리한 문서다.
+이 문서는 현재 저장소 기준으로 백엔드 구조, 주요 런타임 흐름,
+핵심 진입점을 설명합니다. 파일 전수 목록보다 "어디서부터 읽고,
+어떤 경계로 나뉘는가"에 초점을 둡니다.
 
-## 1. 전체 개요
+## 1. 아키텍처 개요
 
-- 아키텍처: Clean Architecture + CQRS
+프로젝트는 Clean Architecture와 CQRS를 기본 뼈대로 사용합니다.
+
 - 의존성 방향:
   `Domain <- Application <- Infrastructure <- Presentation`
-- 도메인 단위 모듈: `auth`, `game`
-- 공통 모듈: `common`, `llm`, `dev`, `config`, `migrations`
+- 주요 도메인: `auth`, `game`
+- 공통 모듈: `common`, `llm`, `dev`
+- 설정/운영 모듈: `config`, `migrations`, `docs`, `scripts`
 
-## 2. 최상위 디렉토리 역할
+핵심 특징:
+
+- Domain은 순수 규칙만 가진다
+- Application은 유스케이스와 조회 흐름을 조율한다
+- Infrastructure는 DB, Redis, Gemini, R2 같은 외부 의존성을 구현한다
+- Presentation은 FastAPI 라우트와 DTO를 제공한다
+- Query와 Command는 read/write DB 세션을 분리해 주입받는다
+
+## 2. 최상위 구조
+
+```text
+app/
+├── auth/
+├── common/
+├── dev/
+├── game/
+└── llm/
+
+config/
+migrations/
+tests/
+docs/
+scripts/
+```
+
+### 최상위 디렉토리 역할
 
 | 경로 | 역할 |
 | --- | --- |
-| `app/` | 서비스 실행 코드(도메인, 유스케이스, 라우터, 인프라) |
-| `config/` | 환경변수 기반 설정 로딩 |
-| `migrations/` | Alembic 마이그레이션 스크립트 |
-| `tests/` | 단위/통합/e2e 테스트 |
+| `app/` | 런타임 애플리케이션 코드 |
+| `config/` | 환경변수 기반 설정 모델 |
+| `migrations/` | Alembic 환경과 revision |
+| `tests/` | unit / integration / e2e 테스트 |
+| `docs/` | 기능 문서와 의사결정 기록 |
+| `scripts/` | DB 초기화, Git hook 보조 스크립트 |
 
-### 2.1 디렉토리 구조/네이밍 일반성 점검 (2026-03-04)
+## 3. 런타임 부트스트랩
 
-현재 구조는 Python FastAPI + Clean Architecture 프로젝트에서 **일반적으로 사용되는 형태**와 대체로 일치한다.
+앱 시작의 진입점은
+[app/main.py](/Users/kitaekang/Documents/dev/ai_saga/app/main.py)입니다.
 
-#### 구조 평가
-- 상위 계층(`app`, `config`, `migrations`, `tests`, `scripts`) 분리가 명확해 온보딩 난이도가 낮다.
-- 도메인 모듈(`auth`, `game`) 내부가 `domain/application/infrastructure/presentation`으로 정리되어 확장에 유리하다.
-- 테스트도 `unit/integration/e2e`로 분리되어 있어 보편적인 테스트 전략과 맞는다.
+부트스트랩 순서는 대략 아래와 같습니다.
 
-#### 네이밍 평가
-- Python 코드/디렉토리명은 대부분 `snake_case`를 지켜 일관성이 좋다.
-- 의미 단위 네이밍(`use_cases`, `value_objects`, `repositories`)도 역할 기반으로 명확하다.
+1. 로깅 설정 적용
+2. FastAPI 앱 생성
+3. CORS, access log, rate limit 미들웨어 등록
+4. 공통 예외 핸들러 등록
+5. `auth`, `game`, `dev` 라우터 포함
+6. 환경 조건이 맞으면 Sentry 초기화
+7. shutdown 시 Postgres/Redis 풀 정리
 
-#### 개선 권장(우선순위 낮음)
-1. 스크립트 네이밍 스타일 통일
-   - 현재 `start-dev.sh`(kebab-case)와 `run_local.sh`, `verify_game_flow.sh`(snake_case)가 혼재
-   - 한 스타일로 통일하면 검색/자동화 규칙 작성이 쉬워진다.
-2. 라우트 파일명 패턴 통일(완료: 2026-03-04)
-   - `app/auth/presentation/routes/auth_routes.py`로 통일했다.
-3. 운영 보조 디렉토리 목적 문서화
-   - `.omx`, `.sisyphus` 같은 운영/오케스트레이션 디렉토리를 README에 한 줄 설명하면 신규 기여자가 혼동하지 않는다.
+개발 환경에서만 아래 기능이 열립니다.
 
-## 3. 런타임 흐름
+- `/api/docs/`
+- `/api/docs/openapi.json`
+- `/api/docs/redoc/`
+- `/api/v1/dev/*`
 
-1. `app/main.py`에서 FastAPI 앱 생성
-2. 공통 미들웨어(CORS, rate limit, access log, 예외 핸들러) 등록
-3. `auth`, `game`, `dev` 라우터 등록
-4. 요청 시 `dependencies.py`/`container.py`를 통해 유스케이스 구성
-5. 유스케이스가 도메인 서비스 + 리포지토리 + 외부 어댑터를 오케스트레이션
-6. 응답 DTO를 통해 API 응답 반환
+## 4. 공통 인프라 계층
 
-## 4. 레이어별 책임
+### 설정
 
-### 4.1 Domain
-- 순수 비즈니스 규칙
-- 외부 I/O 없음
-- 엔티티/값 객체/도메인 서비스 포함
+[config/settings.py](/Users/kitaekang/Documents/dev/ai_saga/config/settings.py)는
+환경변수를 Pydantic Settings로 로드합니다.
 
-### 4.2 Application
-- 유스케이스 실행 흐름 조율
-- Port(인터페이스) 의존
-- Command/Query 분리(CQRS)
-- Query 클래스는 DB에 직접 접근하지 않고 Repository 포트를 통해 조회를 위임
-- DI에서 read/write DB 세션을 분리 주입해 CQRS 읽기/쓰기 경로를 유지
+주요 설정 묶음:
 
-### 4.3 Infrastructure
-- DB/Redis/외부 API 구현
-- ORM 모델/Mapper/Repository 구현체
+- Postgres
+- Redis
+- JWT / OAuth
+- Gemini / Imagen
+- 게임 턴 수와 RAG 파라미터
+- Sentry
+- R2
 
-### 4.4 Presentation
-- FastAPI 라우트
-- Request/Response 스키마
-- HTTP 상태코드/에러 응답 경계
+### 저장소와 미들웨어
 
-## 5. 파일별 책임 1줄 매핑표
+`app/common/`은 도메인 공용 기반을 제공합니다.
 
-아래 표는 주요 백엔드 파일의 책임을 1줄로 요약했다.
-(`__pycache__`, `__init__.py`는 제외)
+- `exception.py`
+  공통 API 예외 타입
+- `middleware/access_log.py`
+  요청/응답 로깅
+- `middleware/exception_handler.py`
+  API/HTTP/일반 예외 응답 변환
+- `middleware/rate_limiting.py`
+  slowapi 기반 rate limit
+- `storage/postgres.py`
+  도메인별 read/write async session 관리
+- `storage/redis.py`
+  Redis 풀과 연결 획득
+- `utils/id_generator.py`
+  UUID v7 생성
 
-### 5.1 앱/설정/공통
+특히 Postgres는 read/write 세션을 분리해 주입합니다.
 
-| 파일 | 책임(1줄) |
-| --- | --- |
-| `app/main.py` | FastAPI 앱 생성, 미들웨어/예외핸들러/라우터/라이프사이클 등록 |
-| `config/settings.py` | 환경변수 기반 설정 모델과 파생 DB URL 제공 |
-| `app/common/exception.py` | 공통 API 예외 타입 정의 |
-| `app/common/middleware/access_log.py` | 요청/응답 액세스 로그 기록 |
-| `app/common/middleware/exception_handler.py` | API/HTTP/일반 예외를 표준 응답으로 변환 |
-| `app/common/middleware/rate_limiting.py` | 레이트리밋 미들웨어 및 핸들러 구성 |
-| `app/common/storage/postgres.py` | 도메인별 Postgres read/write 세션 및 엔진 풀 관리 |
-| `app/common/storage/redis.py` | Redis 커넥션 풀/캐시 유틸 제공 |
-| `app/common/utils/datetime.py` | UTC datetime 유틸 |
-| `app/common/utils/id_generator.py` | UUID v7 생성 유틸 |
-| `app/common/utils/singleton.py` | 싱글톤 메타클래스 제공 |
-| `app/dev/routes.py` | 개발 전용 토큰 발급/시나리오 시딩 라우트 제공 |
+- Command 라우트는 write 세션 사용
+- Query 라우트는 read 세션 사용
 
-### 5.2 Auth 도메인
+## 5. Auth 모듈
 
-#### Domain
+`auth`는 인증과 계정 연결 관리에 집중합니다.
 
-| 파일 | 책임(1줄) |
-| --- | --- |
-| `app/auth/domain/entities/user.py` | 사용자 도메인 엔티티 정의 |
-| `app/auth/domain/entities/social_account.py` | 소셜 계정 도메인 엔티티 정의 |
-| `app/auth/domain/value_objects/auth_provider.py` | OAuth 제공자 값 객체(enum) 정의 |
-| `app/auth/domain/value_objects/user_level.py` | 사용자 레벨 값 객체/규칙 정의 |
+### Domain
 
-#### Application
+- `domain/entities/user.py`
+  유저 엔티티와 영구 게임 레벨/경험치 규칙
+- `domain/entities/social_account.py`
+  소셜 계정 엔티티
+- `domain/value_objects/*`
+  제공자와 유저 레벨 enum
 
-| 파일 | 책임(1줄) |
-| --- | --- |
-| `app/auth/application/queries/get_user.py` | 사용자 조회 쿼리 처리 |
-| `app/auth/application/queries/get_social_accounts.py` | 사용자 소셜 계정 조회 쿼리 처리 |
-| `app/auth/application/use_cases/create_user.py` | 신규 사용자 생성 유스케이스 |
-| `app/auth/application/use_cases/handle_oauth_callback.py` | OAuth 콜백 처리 및 로그인 토큰 발급 |
-| `app/auth/application/use_cases/refresh_token.py` | 리프레시 토큰 기반 액세스 토큰 재발급 |
-| `app/auth/application/use_cases/refresh_google_token.py` | Google 소셜 토큰 갱신 처리 |
-| `app/auth/application/use_cases/logout.py` | 로그아웃 및 토큰 무효화 처리 |
-| `app/auth/application/use_cases/update_user_profile.py` | 사용자 프로필 수정 처리 |
-| `app/auth/application/use_cases/disconnect_social_account.py` | 소셜 계정 연결 해제 처리 |
-| `app/auth/application/ports/__init__.py` | Auth 레이어 포트 인터페이스 export |
+### Application
 
-#### Infrastructure
+- OAuth callback 처리
+- refresh token 회전
+- logout
+- 프로필 수정
+- 소셜 계정 조회/연결 해제
 
-| 파일 | 책임(1줄) |
-| --- | --- |
-| `app/auth/infrastructure/persistence/models/user_models.py` | Auth 관련 SQLAlchemy 모델(User, SocialAccount) 정의 |
-| `app/auth/infrastructure/persistence/mappers.py` | ORM <-> 도메인 엔티티 매핑 |
-| `app/auth/infrastructure/repositories/user_repository.py` | 사용자 저장소 구현체 |
-| `app/auth/infrastructure/repositories/social_account_repository.py` | 소셜 계정 저장소 구현체 |
-| `app/auth/infrastructure/repositories/user_progression_repository.py` | 사용자 게임 진행도 저장소 구현체 |
-| `app/auth/infrastructure/adapters/token_adapter.py` | JWT 생성/검증 어댑터 |
-| `app/auth/infrastructure/adapters/google_auth_adapter.py` | Google OAuth 연동 어댑터 |
-| `app/auth/infrastructure/adapters/auth_cache_adapter.py` | 인증 캐시/토큰 상태 저장 어댑터 |
+### Infrastructure
 
-#### Presentation/DI
+- `repositories/*`
+  User, SocialAccount, UserProgression 구현체
+- `adapters/token_adapter.py`
+  JWT 생성/검증과 블랙리스트 처리
+- `adapters/google_auth_adapter.py`
+  Google OAuth 연동
+- `adapters/auth_cache_adapter.py`
+  OAuth state, 세션성 캐시 관리
 
-| 파일 | 책임(1줄) |
-| --- | --- |
-| `app/auth/presentation/routes/auth_routes.py` | Auth HTTP 엔드포인트 정의 |
-| `app/auth/presentation/routes/schemas/request.py` | Auth 요청 DTO 정의 |
-| `app/auth/presentation/routes/schemas/response.py` | Auth 응답 DTO 정의 |
-| `app/auth/container.py` | Auth 의존성 조립(팩토리) |
-| `app/auth/dependencies.py` | FastAPI Depends 바인딩 및 인증 의존성 제공 |
+### Presentation
 
-### 5.3 Game 도메인
+[app/auth/presentation/routes/auth_routes.py](/Users/kitaekang/Documents/dev/ai_saga/app/auth/presentation/routes/auth_routes.py)
+는 아래 공개 API를 제공합니다.
 
-#### Domain
+- Google login / callback
+- refresh / logout
+- self 조회 / 수정
+- social account 조회 / 해제
 
-| 파일 | 책임(1줄) |
-| --- | --- |
-| `app/game/domain/entities/character.py` | 캐릭터 엔티티 및 상태 변경 로직 정의 |
-| `app/game/domain/entities/game_session.py` | 게임 세션 엔티티 및 턴/종료 상태 로직 정의 |
-| `app/game/domain/entities/game_message.py` | 세션 메시지 엔티티 정의 |
-| `app/game/domain/entities/scenario.py` | 시나리오 엔티티 정의 |
-| `app/game/domain/value_objects/session_status.py` | 세션 상태(enum) 정의 |
-| `app/game/domain/value_objects/ending_type.py` | 엔딩 타입(enum) 정의 |
-| `app/game/domain/value_objects/message_role.py` | 메시지 역할(enum) 정의 |
-| `app/game/domain/value_objects/game_state.py` | 게임 상태/변화 값 객체 정의 |
-| `app/game/domain/value_objects/scenario_genre.py` | 시나리오 장르 값 객체 정의 |
-| `app/game/domain/value_objects/scenario_difficulty.py` | 시나리오 난이도 값 객체 정의 |
-| `app/game/domain/value_objects/dice.py` | 주사위 관련 값 객체 정의 |
-| `app/game/domain/services/game_master_service.py` | LLM 응답 파싱/게임 종료 판단 도메인 규칙 제공 |
-| `app/game/domain/services/game_state_service.py` | 상태 변화 병합/적용 규칙 제공 |
-| `app/game/domain/services/dice_service.py` | 주사위 판정/피해량 계산 규칙 제공 |
-| `app/game/domain/services/vector_similarity_service.py` | 임베딩 유사도 계산 규칙 제공 |
-| `app/game/domain/services/user_progression_service.py` | 유저 XP/시작 HP 계산 규칙 제공 |
+## 6. Game 모듈
 
-#### Application
+`game`은 이 저장소의 핵심 도메인입니다.
 
-| 파일 | 책임(1줄) |
-| --- | --- |
-| `app/game/application/ports/__init__.py` | Game 유스케이스가 의존할 포트 인터페이스 export |
-| `app/game/application/use_cases/start_game.py` | 게임 시작 및 초기 메시지/세션 생성 처리 |
-| `app/game/application/use_cases/process_action.py` | 플레이어 액션 처리, 턴 진행, LLM 응답 생성 처리 |
-| `app/game/application/use_cases/create_character.py` | 캐릭터 생성 처리 |
-| `app/game/application/use_cases/delete_session.py` | 세션 삭제 처리 |
-| `app/game/application/use_cases/generate_ending.py` | 엔딩 생성 처리 |
-| `app/game/application/use_cases/generate_illustration.py` | 일러스트 생성 트리거 및 저장 처리 |
-| `app/game/application/queries/get_scenarios.py` | 시나리오 목록 조회 |
-| `app/game/application/queries/get_characters.py` | 캐릭터 목록 조회 |
-| `app/game/application/queries/get_session.py` | 세션 단건 조회 |
-| `app/game/application/queries/get_user_sessions.py` | 사용자 세션 목록 조회 |
-| `app/game/application/queries/get_session_history.py` | 세션 히스토리(커서 페이징) 조회 |
-| `app/game/application/services/rag_context_builder.py` | 최근 메시지 + 유사 메시지 컨텍스트 병합 |
-| `app/game/application/services/embedding_cache_service.py` | 임베딩 결과 캐시 전략 적용 |
+### Domain
 
-#### Infrastructure
+핵심 엔티티:
 
-| 파일 | 책임(1줄) |
-| --- | --- |
-| `app/game/infrastructure/persistence/models/game_models.py` | 게임 도메인 SQLAlchemy 모델 정의 |
-| `app/game/infrastructure/persistence/mappers.py` | 게임 ORM <-> 도메인 엔티티 매핑 |
-| `app/game/infrastructure/repositories/scenario_repository.py` | 시나리오 저장소 구현체 |
-| `app/game/infrastructure/repositories/character_repository.py` | 캐릭터 저장소 구현체 |
-| `app/game/infrastructure/repositories/game_session_repository.py` | 세션 저장소 구현체 |
-| `app/game/infrastructure/repositories/game_message_repository.py` | 메시지 저장소 구현체(벡터 검색 포함) |
-| `app/game/infrastructure/adapters/cache_service.py` | Cache 포트의 Redis 기반 구현 |
-| `app/game/infrastructure/adapters/llm_service.py` | LLM 포트의 Gemini 연동 구현 |
-| `app/game/infrastructure/adapters/image_service.py` | 이미지 생성/업로드 어댑터 구현 |
+- `entities/scenario.py`
+  시나리오 템플릿
+- `entities/character.py`
+  캐릭터, 세션 내 경험치와 레벨업 규칙
+- `entities/game_session.py`
+  세션 상태, 턴 증가, 완료, pause/resume 규칙
+- `entities/game_message.py`
+  유저/AI 메시지
 
-#### Presentation/DI
+핵심 값 객체와 서비스:
 
-| 파일 | 책임(1줄) |
-| --- | --- |
-| `app/game/presentation/routes/game_routes.py` | 게임 HTTP 엔드포인트 정의 |
-| `app/game/presentation/routes/schemas/request.py` | 게임 요청 DTO 정의 |
-| `app/game/presentation/routes/schemas/response.py` | 게임 응답 DTO 정의 |
-| `app/game/presentation/websocket/__init__.py` | 게임 websocket 패키지 진입점 |
-| `app/game/container.py` | Game 의존성 조립(팩토리) |
-| `app/game/dependencies.py` | FastAPI Depends 바인딩 제공 |
+- `value_objects/action_type.py`
+  액션 타입과 주사위 필요 여부
+- `value_objects/scenario_difficulty.py`
+  난이도와 DC
+- `value_objects/dice.py`
+  주사위 결과 표현
+- `services/dice_service.py`
+  d20 판정, 데미지, 펌블 자해
+- `services/game_master_service.py`
+  LLM JSON 파싱, 엔딩 타입 판별, 실패 보정
+- `services/user_progression_service.py`
+  유저 XP와 시작 HP 계산
+- `services/vector_similarity_service.py`
+  코사인 유사도 계산
 
-### 5.4 LLM 모듈
+### Application
 
-| 파일 | 책임(1줄) |
-| --- | --- |
-| `app/llm/embedding_service_interface.py` | 임베딩 서비스 포트 인터페이스 정의 |
-| `app/llm/dto/llm_response.py` | LLM 응답 DTO 정의 |
-| `app/llm/prompts/game_master.py` | 게임마스터 프롬프트 생성 로직 |
-| `app/llm/providers/base.py` | LLM provider 공통 인터페이스 |
-| `app/llm/providers/gemini.py` | Gemini 텍스트 생성 provider 구현 |
-| `app/llm/providers/gemini_embedding_provider.py` | Gemini 임베딩 provider 구현 |
+핵심 유스케이스:
 
-## 6. 데이터/마이그레이션 구조
+- `use_cases/create_character.py`
+  유저 게임 레벨을 캐릭터 초기 스탯에 반영
+- `use_cases/start_game.py`
+  세션 생성, 초기 내러티브 저장, 초기 이미지 생성 시도
+- `use_cases/process_action.py`
+  턴 진행, idempotency, RAG, 주사위, 상태 반영, 엔딩 처리
+- `use_cases/generate_illustration.py`
+  특정 AI 메시지에 대한 이미지 생성
+- `use_cases/delete_session.py`
+  세션 삭제
+- `use_cases/generate_ending.py`
+  별도 엔딩 생성 경로
 
-| 파일 | 책임(1줄) |
-| --- | --- |
-| `migrations/env.py` | Alembic 실행 환경 및 메타데이터 연결 |
-| `migrations/script.py.mako` | Alembic revision 템플릿 |
-| `migrations/versions/07306584053f_initial_schema.py` | 초기 스키마 생성 |
+핵심 쿼리:
 
-## 7. 참고: 코드 읽기 시작점
+- `queries/get_scenarios.py`
+- `queries/get_characters.py`
+- `queries/get_user_sessions.py`
+- `queries/get_session.py`
+- `queries/get_session_history.py`
 
-처음 파악할 때는 아래 순서를 권장한다.
+보조 서비스:
 
-1. `app/main.py` (앱 조립 방식)
-2. `app/game/presentation/routes/game_routes.py` (핵심 API 경계)
-3. `app/game/application/use_cases/process_action.py` (핵심 유스케이스)
-4. `app/game/domain/services/game_master_service.py` (도메인 규칙)
-5. `app/game/infrastructure/repositories/*.py` (영속화 방식)
-6. `app/auth/presentation/routes/auth_routes.py` (인증 흐름)
+- `application/services/rag_context_builder.py`
+  최근 메시지와 유사 메시지 병합
+- `application/services/embedding_cache_service.py`
+  임베딩 생성 결과 캐시
+
+### Infrastructure
+
+저장소:
+
+- `repositories/scenario_repository.py`
+- `repositories/character_repository.py`
+- `repositories/game_session_repository.py`
+- `repositories/game_message_repository.py`
+
+어댑터:
+
+- `adapters/cache_service.py`
+  Redis 기반 락과 캐시
+- `adapters/llm_service.py`
+  Gemini 텍스트 생성 연동
+- `adapters/image_service.py`
+  Imagen 생성 + R2 업로드
+  local 환경에서는 dummy URL 반환
+
+영속 모델:
+
+[app/game/infrastructure/persistence/models/game_models.py](/Users/kitaekang/Documents/dev/ai_saga/app/game/infrastructure/persistence/models/game_models.py)
+에는 `Scenario`, `Character`, `GameSession`, `GameMessage` SQLAlchemy
+모델이 있습니다.
+
+주요 저장 포인트:
+
+- 세션과 캐릭터 상태는 JSONB 사용
+- 메시지 임베딩은 `Vector(768)`
+- 이미지 URL은 메시지 단위로 저장
+
+### Presentation
+
+[app/game/presentation/routes/game_routes.py](/Users/kitaekang/Documents/dev/ai_saga/app/game/presentation/routes/game_routes.py)
+는 아래 HTTP 경계를 제공합니다.
+
+- 시나리오 조회
+- 캐릭터 생성/조회
+- 세션 시작/조회/삭제
+- 액션 제출
+- 메시지 히스토리 조회
+- 메시지 일러스트 생성
+
+응답 DTO는
+[app/game/presentation/routes/schemas/response.py](/Users/kitaekang/Documents/dev/ai_saga/app/game/presentation/routes/schemas/response.py)에
+정의되어 있습니다.
+
+현재 중요한 응답 특성:
+
+- 세션 목록과 메시지 목록은 cursor pagination 사용
+- 액션 응답은 typed option과 `dice_result` 포함
+- 엔딩 응답은 유저 XP 결과 포함
+- 세션 단건 조회는 일부 `game_state` 키를 정리해 반환
+
+## 7. DI와 요청 경계
+
+`game`과 `auth` 모두 컨테이너 기반 의존성 조립을 사용합니다.
+
+대표 파일:
+
+- [app/game/container.py](/Users/kitaekang/Documents/dev/ai_saga/app/game/container.py)
+- [app/game/dependencies.py](/Users/kitaekang/Documents/dev/ai_saga/app/game/dependencies.py)
+
+흐름은 아래와 같습니다.
+
+1. FastAPI `Depends`가 read 또는 write DB 세션을 주입
+2. 컨테이너가 repository, adapter, use case를 조립
+3. 라우터는 DTO 변환과 HTTP 에러 매핑만 담당
+4. 실제 비즈니스 흐름은 use case가 수행
+
+이 구조 덕분에 테스트에서 repository/adapter를 mock으로 교체하기
+쉽습니다.
+
+## 8. 핵심 런타임 플로우
+
+### 게임 시작
+
+1. 캐릭터 소유권 검증
+2. 시나리오 사용 가능 여부 검증
+3. 활성 세션 중복 확인
+4. 세션 생성
+5. 초기 LLM 응답 생성
+6. 초기 메시지 저장
+7. 이미지 기능이 켜져 있으면 초기 이미지 생성 시도
+8. commit 후 세션 응답 반환
+
+### 액션 처리
+
+1. idempotency cache 확인
+2. 세션 소유권/상태 검증
+3. 턴 증가
+4. 유저 메시지 임베딩 생성 및 저장
+5. 최근 메시지 + 유사 메시지로 컨텍스트 구성
+6. 마지막 턴 여부 판단
+7. 일반 턴이면 액션 타입 재추론 후 주사위 판정
+8. LLM 응답 JSON 파싱
+9. 실패한 주사위 결과에 맞춰 상태 변경 보정
+10. 캐릭터 HP, 경험치, 인벤토리 갱신
+11. 필요 시 사망 엔딩 처리
+12. AI 메시지와 임베딩 저장
+13. commit 후 응답을 idempotency cache에 기록
+
+### 이미지 생성
+
+1. 기능 플래그 확인
+2. 세션 소유권 확인
+3. 메시지 존재 여부와 AI 메시지 여부 확인
+4. 기존 `image_url` 있으면 재사용
+5. 없으면 프롬프트 생성 후 이미지 생성 서비스 호출
+6. 메시지에 `image_url` 반영
+
+## 9. 테스트 구조
+
+테스트는 구현 레이어와 관심사에 맞춰 나뉘어 있습니다.
+
+```text
+tests/
+├── unit/
+├── integration/
+├── e2e/
+├── game/
+└── llm/
+```
+
+의미는 다음과 같습니다.
+
+- `unit/`
+  순수 도메인 규칙과 유스케이스 단위 검증
+- `integration/`
+  Redis, pgvector, repository, provider 연동 검증
+- `e2e/`
+  HTTP 경계 기준 검증
+- `game/`
+  게임 도메인 횡단 시나리오 성격 테스트
+- `llm/`
+  프롬프트와 provider 단위 테스트
+
+## 10. 현재 상태로 이해해야 할 부분
+
+아래 디렉토리는 아직 실질 공개 기능보다 확장 여지를 나타냅니다.
+
+- `app/game/presentation/websocket/`
+- `app/game/events/`
+- `app/common/kafka/`
+
+즉, 코드베이스는 WebSocket, 이벤트 기반 확장을 염두에 두고 있지만
+현재 공개 API의 핵심은 HTTP + DB + Redis + Gemini 흐름입니다.
+
+## 11. 처음 읽기 좋은 순서
+
+처음 진입할 때는 아래 순서를 권장합니다.
+
+1. [app/main.py](/Users/kitaekang/Documents/dev/ai_saga/app/main.py)
+2. [app/game/presentation/routes/game_routes.py](/Users/kitaekang/Documents/dev/ai_saga/app/game/presentation/routes/game_routes.py)
+3. [app/game/application/use_cases/process_action.py](/Users/kitaekang/Documents/dev/ai_saga/app/game/application/use_cases/process_action.py)
+4. [app/game/domain/services/game_master_service.py](/Users/kitaekang/Documents/dev/ai_saga/app/game/domain/services/game_master_service.py)
+5. [app/game/container.py](/Users/kitaekang/Documents/dev/ai_saga/app/game/container.py)
+6. [app/auth/presentation/routes/auth_routes.py](/Users/kitaekang/Documents/dev/ai_saga/app/auth/presentation/routes/auth_routes.py)

@@ -4,6 +4,7 @@
 기존 GameService.process_action()의 비즈니스 로직을 분리.
 """
 
+import copy
 import hashlib
 import json
 import logging
@@ -42,6 +43,7 @@ from app.game.domain.value_objects import (
     GameState,
     MessageRole,
     SessionStatus,
+    StateChanges,
 )
 from app.game.domain.value_objects.dice import DiceCheckType
 from app.game.domain.value_objects.scenario_difficulty import (
@@ -300,7 +302,9 @@ class ProcessActionUseCase:
             check_type = self._to_dice_check_type(action_type)
             dice_result = DiceService.perform_check(
                 level=character.stats.level,
-                difficulty=scenario.difficulty,
+                difficulty=self._coerce_scenario_difficulty(
+                    scenario.difficulty
+                ),
                 check_type=check_type,
             )
             dice_result_section = build_dice_result_section(dice_result)
@@ -312,6 +316,7 @@ class ProcessActionUseCase:
             character_description=character.prompt_profile,
             current_location=session.current_location,
             recent_events=recent_events,
+            inventory=character.inventory,
             game_state=game_state,
             dice_result_section=dice_result_section,
         )
@@ -328,6 +333,7 @@ class ProcessActionUseCase:
 
         dice_applied = False
         before_narrative = None
+        persisted_parsed_response = parsed if parsed else None
         if parsed:
             # Extract structured data
             narrative = GameMasterService.extract_narrative_from_parsed(
@@ -364,17 +370,27 @@ class ProcessActionUseCase:
                     )
                 )
 
-            resolved_hp_change = 0
+            resolved_hp_change = state_changes.hp_change
             if (
                 dice_result is not None
                 and dice_result.is_fumble
                 and dice_result.damage
             ):
                 resolved_hp_change = -dice_result.damage
+            elif should_apply_dice and not dice_applied:
+                resolved_hp_change = 0
             if resolved_hp_change != state_changes.hp_change:
                 state_changes = state_changes.model_copy(
                     update={"hp_change": resolved_hp_change}
                 )
+
+            persisted_parsed_response = self._build_persisted_parsed_response(
+                parsed=parsed,
+                narrative=narrative,
+                state_changes=state_changes,
+                dice_applied=dice_applied,
+                before_narrative=before_narrative,
+            )
 
             # Update session state
             session = session.update_game_state(state_changes)
@@ -497,7 +513,7 @@ class ProcessActionUseCase:
             session_id=session.id,
             role=MessageRole.ASSISTANT,
             content=llm_response.content,
-            parsed_response=parsed if parsed else None,
+            parsed_response=persisted_parsed_response,
             token_count=(
                 llm_response.usage.total_tokens if llm_response.usage else None
             ),
@@ -542,6 +558,43 @@ class ProcessActionUseCase:
         )
 
         return session, response
+
+    @staticmethod
+    def _build_persisted_parsed_response(
+        parsed: dict,
+        narrative: str,
+        state_changes: StateChanges,
+        dice_applied: bool,
+        before_narrative: Optional[str],
+    ) -> dict:
+        persisted = copy.deepcopy(parsed)
+        persisted["narrative"] = narrative
+        persisted["dice_applied"] = dice_applied
+
+        if before_narrative:
+            persisted["before_narrative"] = before_narrative
+        else:
+            persisted.pop("before_narrative", None)
+
+        persisted["state_changes"] = {
+            "hp_change": state_changes.hp_change,
+            "experience_gained": state_changes.experience_gained,
+            "items_gained": state_changes.items_gained,
+            "items_lost": state_changes.items_lost,
+            "location": state_changes.location,
+            "npcs_met": state_changes.npcs_met,
+            "discoveries": state_changes.discoveries,
+        }
+
+        return persisted
+
+    @staticmethod
+    def _coerce_scenario_difficulty(
+        difficulty: ScenarioDifficulty | str,
+    ) -> ScenarioDifficulty:
+        if isinstance(difficulty, ScenarioDifficulty):
+            return difficulty
+        return ScenarioDifficulty(difficulty)
 
     async def _handle_ending(
         self,
@@ -966,8 +1019,3 @@ class ProcessActionUseCase:
             )
 
         return normalized_options
-
-    @staticmethod
-    def _should_apply_dice_check(action: str) -> bool:
-        """Deprecated shim for legacy tests."""
-        return ProcessActionUseCase._resolve_action_type(action).requires_dice

@@ -1,4 +1,5 @@
 from typing import List, Optional
+from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import (
@@ -95,9 +96,13 @@ async def google_callback(
         )
         result = await use_case.execute(input_data)
 
-        # Frontend success URL (should be configurable via settings)
-        # Assuming Vite default port 5173 for now
-        frontend_url = f"http://localhost:5173/auth/login/success?access_token={result.access_token}&new_user={str(result.is_new_user).lower()}"
+        query = urlencode(
+            {
+                "access_token": result.access_token,
+                "new_user": str(result.is_new_user).lower(),
+            }
+        )
+        frontend_url = f"{settings.frontend_login_success_url}?{query}"
 
         response = RedirectResponse(url=frontend_url)
 

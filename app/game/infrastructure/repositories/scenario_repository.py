@@ -41,7 +41,3 @@ class ScenarioRepositoryImpl(ScenarioRepositoryInterface):
         orms = result.scalars().all()
 
         return [ScenarioMapper.to_entity(orm) for orm in orms]
-
-    async def get_all_active(self) -> list[ScenarioEntity]:
-        """레거시 호환 메서드: 활성 시나리오 조회."""
-        return await self.get_all(active_only=True)

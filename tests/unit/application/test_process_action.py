@@ -511,6 +511,29 @@ class TestScenarioLoading:
         assert "나이: 20대 후반." in system_prompt
         assert "성별: 남성." in system_prompt
 
+    async def test_character_inventory_passed_to_prompt(
+        self, use_case, active_session, mock_repositories
+    ):
+        """캐릭터 인벤토리가 GameMasterPrompt에 전달되는지 확인."""
+        character = mock_repositories["character_repo"].get_by_id.return_value
+        character.inventory = ["녹슨 나이프", "빈 물통"]
+
+        input_data = ProcessActionInput(
+            session_id=active_session.id,
+            action="북쪽으로 이동",
+            idempotency_key="character-inventory-key",
+        )
+
+        await use_case.execute(active_session.user_id, input_data)
+
+        llm_call_args = mock_repositories[
+            "llm_service"
+        ].generate_response.call_args
+        system_prompt = llm_call_args[1]["system_prompt"]
+
+        assert "녹슨 나이프" in system_prompt
+        assert "빈 물통" in system_prompt
+
     async def test_scenario_not_found_raises_error(
         self, use_case, active_session, mock_repositories
     ):
