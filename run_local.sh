@@ -1,6 +1,8 @@
 #!/bin/bash
 # run_local.sh - Run the AI Saga backend locally
 
+set -e
+
 # 1. Check if Docker is running
 if ! docker info > /dev/null 2>&1; then
   echo "Error: Docker is not running. Please start Docker Desktop."
@@ -41,6 +43,10 @@ export POSTGRES_HOST=localhost
 export REDIS_URL=redis://localhost:6379
 export KAFKA_BOOTSTRAP_SERVERS=localhost:9092
 
-# 5. Run with uv
+# 5. Run database migrations
+echo "Running database migrations..."
+uv run alembic upgrade head
+
+# 6. Run with uv
 echo "Starting Application..."
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+exec uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

@@ -27,6 +27,10 @@ class ScenarioEntity(BaseModel):
     difficulty: ScenarioDifficulty = ScenarioDifficulty.NORMAL
     system_prompt_override: Optional[str] = None
     max_turns: int = Field(gt=0, default=30)
+    tags: list[str] = Field(default_factory=list)
+    thumbnail_url: Optional[str] = None
+    hook: Optional[str] = None
+    recommended_for: Optional[str] = None
     is_active: bool = True
     created_at: datetime
 

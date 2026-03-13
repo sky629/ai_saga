@@ -96,8 +96,8 @@ async def create_character(
     """Create a new character."""
     input_data = CreateCharacterInput(
         name=request.name,
-        description=request.description,
         scenario_id=request.scenario_id,
+        profile=request.profile.model_dump(exclude_none=True),
     )
     try:
         character = await use_case.execute(current_user.id, input_data)

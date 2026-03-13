@@ -145,7 +145,7 @@ class StartGameUseCase:
             scenario_name=scenario.name,
             world_setting=scenario.world_setting,
             character_name=character.name,
-            character_description=character.description or "",
+            character_description=character.prompt_profile,
             current_location=session.current_location,
             recent_events="게임이 시작되었습니다.",
         )

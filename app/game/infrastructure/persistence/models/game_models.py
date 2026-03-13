@@ -45,6 +45,14 @@ class Scenario(Base):
         Text, nullable=True
     )
     max_turns: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    tags: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=lambda: []
+    )
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True
+    )
+    hook: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    recommended_for: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )
@@ -85,7 +93,9 @@ class Character(Base):
         index=True,
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    profile: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=lambda: {}
+    )
 
     # Character stats stored as JSON for flexibility
     stats: Mapped[dict] = mapped_column(

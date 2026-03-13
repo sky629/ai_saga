@@ -23,6 +23,10 @@ class ScenarioListItem(BaseModel):
     genre: str
     difficulty: str
     max_turns: int
+    tags: list[str]
+    thumbnail_url: Optional[str] = None
+    hook: Optional[str] = None
+    recommended_for: Optional[str] = None
     world_setting: Optional[str] = None
     initial_location: Optional[str] = None
     is_active: bool = True
@@ -51,6 +55,10 @@ class GetScenariosQuery:
                 genre=s.genre.value,
                 difficulty=s.difficulty.value,
                 max_turns=s.max_turns,
+                tags=s.tags,
+                thumbnail_url=s.thumbnail_url,
+                hook=s.hook,
+                recommended_for=s.recommended_for,
                 world_setting=s.world_setting,
                 initial_location=s.initial_location,
                 is_active=s.is_active,

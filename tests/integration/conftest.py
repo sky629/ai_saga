@@ -62,6 +62,7 @@ async def db_session():
     async with engine.begin() as conn:
         # Enable pgvector extension first
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
     # Create session factory

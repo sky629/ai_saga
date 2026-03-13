@@ -42,24 +42,6 @@ class DiceService:
         return (level - 1) // 4 + 2
 
     @staticmethod
-    def get_dc(difficulty: ScenarioDifficulty) -> int:
-        """시나리오 난이도에 따른 DC(Difficulty Class)를 반환합니다.
-
-        Args:
-            difficulty: 시나리오 난이도
-
-        Returns:
-            목표 주사위 값 (DC)
-        """
-        dc_map = {
-            ScenarioDifficulty.EASY: 8,
-            ScenarioDifficulty.NORMAL: 12,
-            ScenarioDifficulty.HARD: 15,
-            ScenarioDifficulty.NIGHTMARE: 18,
-        }
-        return dc_map.get(difficulty, 12)
-
-    @staticmethod
     def get_damage_dice(level: int) -> tuple[int, int]:
         """레벨에 따른 데미지 주사위 (개수, 면수)를 반환합니다.
 
@@ -123,7 +105,7 @@ class DiceService:
         """
         roll = DiceService.roll_d20()
         modifier = DiceService.calculate_modifier(level)
-        dc = DiceService.get_dc(difficulty)
+        dc = difficulty.dc
 
         is_critical = roll == 20
         is_fumble = roll == 1

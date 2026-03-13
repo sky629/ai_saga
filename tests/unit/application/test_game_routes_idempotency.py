@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from app.common.utils.datetime import get_utc_datetime
 from app.common.utils.id_generator import get_uuid7
@@ -322,11 +323,56 @@ async def test_create_character_maps_invalid_scenario_to_404():
         await create_character(
             request=CreateCharacterRequest(
                 name="Hero",
-                description=None,
                 scenario_id=get_uuid7(),
+                profile={
+                    "age": 28,
+                    "gender": "남성",
+                    "appearance": "짙은 코트를 걸친 사내",
+                },
             ),
             use_case=use_case,
             current_user=SimpleNamespace(id=get_uuid7()),
         )
 
     assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_character_forwards_structured_profile_fields():
+    use_case = AsyncMock()
+    current_user = SimpleNamespace(id=get_uuid7())
+    request = CreateCharacterRequest(
+        name="실비아",
+        scenario_id=get_uuid7(),
+        profile={
+            "age": 27,
+            "gender": "여성",
+            "appearance": "검은 단발과 오래된 흉터",
+            "goal": "실종된 형을 찾는 것",
+        },
+    )
+
+    await create_character(
+        request=request,
+        use_case=use_case,
+        current_user=current_user,
+    )
+
+    input_data = use_case.execute.call_args.args[1]
+    assert input_data.profile.age == 27
+    assert input_data.profile.gender == "여성"
+    assert input_data.profile.goal == "실종된 형을 찾는 것"
+    assert input_data.profile.appearance == "검은 단발과 오래된 흉터"
+
+
+def test_create_character_request_rejects_unknown_gender():
+    with pytest.raises(ValidationError):
+        CreateCharacterRequest(
+            name="실비아",
+            scenario_id=get_uuid7(),
+            profile={
+                "age": 27,
+                "gender": "논바이너리",
+                "appearance": "검은 단발과 오래된 흉터",
+            },
+        )

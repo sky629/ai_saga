@@ -62,24 +62,24 @@ class TestDiceServiceCalculateModifier:
         assert DiceService.calculate_modifier(13) == 5
 
 
-class TestDiceServiceGetDC:
-    """get_dc method tests."""
+class TestScenarioDifficultyDC:
+    """ScenarioDifficulty.dc property tests."""
 
-    def test_get_dc_easy(self):
-        """Test EASY difficulty returns DC 8."""
-        assert DiceService.get_dc(ScenarioDifficulty.EASY) == 8
+    def test_easy_dc(self):
+        """Test EASY difficulty returns DC 10."""
+        assert ScenarioDifficulty.EASY.dc == 10
 
-    def test_get_dc_normal(self):
-        """Test NORMAL difficulty returns DC 12."""
-        assert DiceService.get_dc(ScenarioDifficulty.NORMAL) == 12
+    def test_normal_dc(self):
+        """Test NORMAL difficulty returns DC 13."""
+        assert ScenarioDifficulty.NORMAL.dc == 13
 
-    def test_get_dc_hard(self):
-        """Test HARD difficulty returns DC 15."""
-        assert DiceService.get_dc(ScenarioDifficulty.HARD) == 15
+    def test_hard_dc(self):
+        """Test HARD difficulty returns DC 16."""
+        assert ScenarioDifficulty.HARD.dc == 16
 
-    def test_get_dc_nightmare(self):
-        """Test NIGHTMARE difficulty returns DC 18."""
-        assert DiceService.get_dc(ScenarioDifficulty.NIGHTMARE) == 18
+    def test_nightmare_dc(self):
+        """Test NIGHTMARE difficulty returns DC 19."""
+        assert ScenarioDifficulty.NIGHTMARE.dc == 19
 
 
 class TestDiceServiceGetDamageDice:
@@ -188,8 +188,33 @@ class TestDiceServicePerformCheck:
             )
             assert result.roll == 15
             assert result.modifier == 3
-            assert result.dc == 12
+            assert result.dc == 13
             assert result.check_type == DiceCheckType.COMBAT
+
+    def test_normal_difficulty_is_fifty_percent_at_level_one_baseline(self):
+        """Lv1(+2) 기준 NORMAL은 11 이상만 성공해야 한다."""
+        with patch(
+            "app.game.domain.services.dice_service.random.randint"
+        ) as mock_randint:
+            mock_randint.return_value = 10
+            fail_result = DiceService.perform_check(
+                level=1,
+                difficulty=ScenarioDifficulty.NORMAL,
+            )
+
+        with patch(
+            "app.game.domain.services.dice_service.random.randint"
+        ) as mock_randint:
+            mock_randint.return_value = 11
+            success_result = DiceService.perform_check(
+                level=1,
+                difficulty=ScenarioDifficulty.NORMAL,
+            )
+
+        assert fail_result.total == 12
+        assert fail_result.is_success is False
+        assert success_result.total == 13
+        assert success_result.is_success is True
 
     def test_perform_check_critical(self):
         """Test perform_check with critical hit (roll=20)."""
@@ -272,4 +297,4 @@ class TestDiceServicePerformCheck:
                     difficulty=difficulty,
                     check_type=DiceCheckType.COMBAT,
                 )
-                assert result.dc == DiceService.get_dc(difficulty)
+                assert result.dc == difficulty.dc

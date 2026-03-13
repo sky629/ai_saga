@@ -168,6 +168,58 @@ class GameMasterService:
         return parsed.get("narrative", fallback)
 
     @staticmethod
+    def normalize_failed_dice_narrative(
+        narrative: str,
+        player_action: str,
+        is_fumble: bool = False,
+    ) -> str:
+        """주사위 실패 시 성공 확정처럼 보이는 narrative를 보정."""
+        failure_markers = [
+            "실패",
+            "빗나",
+            "뜻대로 되지",
+            "막혀",
+            "저지",
+            "헛",
+            "불발",
+            "주춤",
+            "휘청",
+            "놓치",
+            "미끄러",
+        ]
+        success_markers = [
+            "성공",
+            "적중",
+            "완료",
+            "해낸",
+            "해냅",
+            "도착",
+            "열립니다",
+            "열어",
+            "움직입니다",
+            "뽑아",
+            "전투 태세",
+            "돌파",
+            "설득해",
+        ]
+
+        if any(marker in narrative for marker in failure_markers) and not any(
+            marker in narrative for marker in success_markers
+        ):
+            return narrative
+
+        cleaned_action = player_action.strip().rstrip(".!?")
+        if is_fumble:
+            return (
+                f"당신은 {cleaned_action} 시도하지만 크게 어긋나며 "
+                "상황이 더 나빠집니다."
+            )
+        return (
+            f"당신은 {cleaned_action} 시도하지만 뜻대로 되지 않아 "
+            "원하는 결과를 얻지 못합니다."
+        )
+
+    @staticmethod
     def extract_options_from_parsed(parsed: dict) -> list[str]:
         """파싱된 JSON에서 옵션 추출.
 

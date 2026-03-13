@@ -1,10 +1,33 @@
 """Character Domain Entity."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+
+class CharacterProfile(BaseModel):
+    """캐릭터 온보딩 프로필."""
+
+    model_config = {"frozen": True}
+
+    age: int = Field(ge=0)
+    gender: Literal["남성", "여성", "비공개"]
+    appearance: str = Field(min_length=1, max_length=300)
+    goal: Optional[str] = Field(default=None, max_length=300)
+
+    def build_summary(self, name: str) -> str:
+        """프롬프트와 호환용 설명에 사용할 요약 문자열 생성."""
+        parts = [
+            f"이름: {name}.",
+            f"나이: {self.age}세.",
+            f"성별: {self.gender}.",
+            f"외형: {self.appearance}.",
+        ]
+        if self.goal:
+            parts.append(f"목표: {self.goal}.")
+        return " ".join(parts)
 
 
 class CharacterStats(BaseModel):
@@ -111,7 +134,7 @@ class CharacterEntity(BaseModel):
     user_id: UUID
     scenario_id: UUID
     name: str = Field(min_length=1, max_length=100)
-    description: Optional[str] = None
+    profile: Optional[CharacterProfile] = None
     stats: CharacterStats = Field(default_factory=CharacterStats)
     inventory: list = Field(default_factory=list)
     is_active: bool = True
@@ -145,3 +168,10 @@ class CharacterEntity(BaseModel):
     def is_alive(self) -> bool:
         """캐릭터 생존 상태."""
         return self.stats.is_alive and self.is_active
+
+    @property
+    def prompt_profile(self) -> str:
+        """프롬프트용 캐릭터 프로필 요약."""
+        if not self.profile:
+            return ""
+        return self.profile.build_summary(self.name)

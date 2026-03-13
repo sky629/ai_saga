@@ -392,6 +392,10 @@ class TestScenarioLoading:
         character_repo = AsyncMock()
         character_mock = MagicMock()
         character_mock.name = "테스트 캐릭터"
+        character_mock.prompt_profile = (
+            "이름: 테스트 캐릭터. 나이: 20대 후반. 성별: 남성. "
+            "외형: 낡은 갑옷을 입은 모험가."
+        )
         character_mock.stats.level = 1
         character_repo.get_by_id.return_value = character_mock
 
@@ -486,6 +490,26 @@ class TestScenarioLoading:
         system_prompt = llm_call_args[1]["system_prompt"]
 
         assert "중세 판타지 세계" in system_prompt
+
+    async def test_character_profile_passed_to_prompt(
+        self, use_case, active_session, mock_repositories
+    ):
+        """캐릭터 프로필이 GameMasterPrompt에 전달되는지 확인."""
+        input_data = ProcessActionInput(
+            session_id=active_session.id,
+            action="북쪽으로 이동",
+            idempotency_key="character-profile-key",
+        )
+
+        await use_case.execute(active_session.user_id, input_data)
+
+        llm_call_args = mock_repositories[
+            "llm_service"
+        ].generate_response.call_args
+        system_prompt = llm_call_args[1]["system_prompt"]
+
+        assert "나이: 20대 후반." in system_prompt
+        assert "성별: 남성." in system_prompt
 
     async def test_scenario_not_found_raises_error(
         self, use_case, active_session, mock_repositories

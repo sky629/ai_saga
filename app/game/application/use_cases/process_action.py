@@ -309,7 +309,7 @@ class ProcessActionUseCase:
             scenario_name=scenario.name,
             world_setting=scenario.world_setting,
             character_name=character.name,
-            character_description="",
+            character_description=character.prompt_profile,
             current_location=session.current_location,
             recent_events=recent_events,
             game_state=game_state,
@@ -353,6 +353,11 @@ class ProcessActionUseCase:
                 and dice_result is not None
                 and not dice_result.is_success
             ):
+                narrative = GameMasterService.normalize_failed_dice_narrative(
+                    narrative=narrative,
+                    player_action=player_action,
+                    is_fumble=dice_result.is_fumble,
+                )
                 state_changes = (
                     GameMasterService.filter_state_changes_on_dice_failure(
                         state_changes
@@ -794,11 +799,24 @@ class ProcessActionUseCase:
             "strike",
             "hit",
             "battle",
+            "swing",
+            "slash",
+            "stab",
+            "lunge",
+            "charge",
+            "aim",
             "전투",
             "공격",
             "베기",
             "찌르기",
             "사격",
+            "휘두르",
+            "휘두른",
+            "후려치",
+            "내리치",
+            "겨누",
+            "돌진",
+            "습격",
         ]
         social_keywords = [
             "persuade",
@@ -849,6 +867,22 @@ class ProcessActionUseCase:
             "간다",
             "걷",
         ]
+        preparation_keywords = [
+            "칼을 뽑",
+            "검을 뽑",
+            "무기를 뽑",
+            "칼을 꺼",
+            "검을 꺼",
+            "무기를 꺼",
+            "칼자루를 잡",
+            "검자루를 잡",
+            "자세를 잡",
+            "전투 준비",
+            "ready weapon",
+            "draw sword",
+            "draw blade",
+            "unsheathe",
+        ]
         exploration_keywords = [
             "잠입",
             "탈출",
@@ -877,6 +911,8 @@ class ProcessActionUseCase:
             return ActionType.SOCIAL
         if any(keyword in normalized for keyword in skill_keywords):
             return ActionType.SKILL
+        if any(keyword in normalized for keyword in preparation_keywords):
+            return ActionType.OBSERVATION
         if any(keyword in normalized for keyword in exploration_keywords):
             return ActionType.EXPLORATION
         if any(keyword in normalized for keyword in rest_keywords):

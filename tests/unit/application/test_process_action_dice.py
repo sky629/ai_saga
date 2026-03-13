@@ -25,6 +25,11 @@ from app.game.domain.value_objects.dice import DiceCheckType, DiceResult
         ("상인을 설득한다", ActionType.SOCIAL),
         ("자물쇠를 해제한다", ActionType.SKILL),
         ("북쪽으로 이동한다", ActionType.MOVEMENT),
+        ("칼을 뽑는다", ActionType.OBSERVATION),
+        (
+            "칼을 든 채 경비병들을 노려본다. 그러다가 경비병이 한 눈 판 사이에 칼을 휘두른다",
+            ActionType.COMBAT,
+        ),
     ],
 )
 def test_resolve_action_type(action, expected):
@@ -166,7 +171,7 @@ class TestDiceIntegration:
         assert result.response.dice_result is not None
         assert result.response.dice_result.roll == 15
         assert result.response.dice_result.modifier == 3  # Level 5 = +3
-        assert result.response.dice_result.dc == 12  # NORMAL difficulty
+        assert result.response.dice_result.dc == 13  # NORMAL difficulty
         assert result.response.dice_result.is_success is True
         assert result.response.dice_result.check_type == "combat"
         assert result.response.options[0].label == "Option 1"
@@ -307,6 +312,53 @@ class TestDiceIntegration:
         mock_randint.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_weapon_draw_preparation_does_not_trigger_dice(
+        self, mock_repositories, active_session, character, scenario
+    ):
+        mock_repositories["cache_service"].get.return_value = None
+        mock_repositories["session_repository"].get_by_id.return_value = (
+            active_session
+        )
+        mock_repositories["character_repository"].get_by_id.return_value = (
+            character
+        )
+        mock_repositories["scenario_repository"].get_by_id.return_value = (
+            scenario
+        )
+        mock_repositories[
+            "embedding_service"
+        ].generate_embedding.return_value = [0.1, 0.2, 0.3]
+
+        mock_llm_response = MagicMock()
+        mock_llm_response.content = (
+            '{"before_narrative": "당신은 칼자루에 손을 얹습니다.", '
+            '"narrative": "당신은 천천히 칼을 뽑아 듭니다.", '
+            '"options": ["주변을 살핀다"], '
+            '"dice_applied": true, '
+            '"state_changes": {"hp_change": 0}}'
+        )
+        mock_llm_response.usage.total_tokens = 100
+        mock_repositories["llm_service"].generate_response.return_value = (
+            mock_llm_response
+        )
+
+        with patch(
+            "app.game.domain.services.dice_service.random.randint"
+        ) as mock_randint:
+            use_case = ProcessActionUseCase(**mock_repositories)
+            input_data = ProcessActionInput(
+                session_id=active_session.id,
+                action="칼을 뽑는다",
+                idempotency_key="weapon-draw-no-dice-key",
+            )
+
+            result = await use_case.execute(active_session.user_id, input_data)
+
+        assert result.response.dice_result is None
+        assert result.response.before_roll_narrative is None
+        mock_randint.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_client_action_type_hint_cannot_bypass_combat_dice(
         self, mock_repositories, active_session, character, scenario
     ):
@@ -404,6 +456,56 @@ class TestDiceIntegration:
         assert result.response.dice_result is not None
         assert result.response.dice_result.check_type == "exploration"
         mock_randint.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_failed_dice_narrative_is_sanitized_when_llm_claims_success(
+        self, mock_repositories, active_session, character, scenario
+    ):
+        mock_repositories["cache_service"].get.return_value = None
+        mock_repositories["session_repository"].get_by_id.return_value = (
+            active_session
+        )
+        mock_repositories["character_repository"].get_by_id.return_value = (
+            character
+        )
+        mock_repositories["scenario_repository"].get_by_id.return_value = (
+            scenario
+        )
+        mock_repositories[
+            "embedding_service"
+        ].generate_embedding.return_value = [0.1, 0.2, 0.3]
+
+        mock_llm_response = MagicMock()
+        mock_llm_response.content = (
+            '{"before_narrative": "당신은 칼자루를 움켜쥡니다.", '
+            '"narrative": "당신은 칼을 뽑아 전투 태세를 갖춥니다.", '
+            '"options": ["다시 시도한다"], '
+            '"dice_applied": true, '
+            '"state_changes": {"hp_change": 0}}'
+        )
+        mock_llm_response.usage.total_tokens = 100
+        mock_repositories["llm_service"].generate_response.return_value = (
+            mock_llm_response
+        )
+
+        with patch(
+            "app.game.domain.services.dice_service.random.randint"
+        ) as mock_randint:
+            mock_randint.return_value = 2
+
+            use_case = ProcessActionUseCase(**mock_repositories)
+            input_data = ProcessActionInput(
+                session_id=active_session.id,
+                action="적에게 칼을 휘두른다",
+                idempotency_key="failed-narrative-sanitize-key",
+            )
+
+            result = await use_case.execute(active_session.user_id, input_data)
+
+        assert result.response.dice_result is not None
+        assert result.response.dice_result.is_success is False
+        assert "칼을 뽑아" not in result.response.narrative
+        assert "뜻대로 되지" in result.response.narrative
 
     @pytest.mark.asyncio
     async def test_persisted_parsed_response_keeps_raw_llm_option_schema(
@@ -525,9 +627,9 @@ class TestDiceIntegration:
             user_id=character.user_id,
             scenario_id=character.scenario_id,
             name=character.name,
-            description=character.description,
+            profile=character.profile,
             stats=CharacterStats(hp=10, max_hp=100, level=5),
-            inventory=[],
+            inventory=character.inventory,
             is_active=True,
             created_at=character.created_at,
         )
@@ -593,9 +695,9 @@ class TestDiceIntegration:
             user_id=character.user_id,
             scenario_id=character.scenario_id,
             name=character.name,
-            description=character.description,
+            profile=character.profile,
             stats=CharacterStats(hp=1, max_hp=100, level=5),
-            inventory=[],
+            inventory=character.inventory,
             is_active=True,
             created_at=character.created_at,
         )

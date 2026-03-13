@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Generic, Optional, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 T = TypeVar("T")
 
@@ -66,6 +66,10 @@ class ScenarioResponse(BaseModel):
     genre: str
     difficulty: str
     max_turns: int
+    tags: list[str] = Field(default_factory=list)
+    thumbnail_url: Optional[str] = None
+    hook: Optional[str] = None
+    recommended_for: Optional[str] = None
     world_setting: Optional[str] = None
     initial_location: Optional[str] = None
     is_active: bool = True
@@ -81,6 +85,17 @@ class CharacterStatsResponse(BaseModel):
     level: int
 
 
+class CharacterProfileResponse(BaseModel):
+    """Character profile response model."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    appearance: Optional[str] = None
+    goal: Optional[str] = None
+
+
 class CharacterResponse(BaseModel):
     """Character response model."""
 
@@ -90,7 +105,7 @@ class CharacterResponse(BaseModel):
     user_id: UUID
     scenario_id: UUID
     name: str
-    description: Optional[str]
+    profile: Optional[CharacterProfileResponse] = None
     stats: CharacterStatsResponse
     inventory: list
     is_active: bool

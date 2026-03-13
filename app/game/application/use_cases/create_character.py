@@ -1,6 +1,5 @@
 """Create Character Use Case."""
 
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -14,6 +13,7 @@ from app.game.application.ports import (
     UserProgressionInterface,
 )
 from app.game.domain.entities import CharacterEntity, CharacterStats
+from app.game.domain.entities.character import CharacterProfile
 from app.game.domain.services import UserProgressionService
 
 
@@ -21,8 +21,8 @@ class CreateCharacterInput(BaseModel):
     """Use Case 입력 DTO."""
 
     name: str
-    description: Optional[str] = None
     scenario_id: UUID
+    profile: CharacterProfile
 
 
 class CreateCharacterUseCase:
@@ -56,7 +56,7 @@ class CreateCharacterUseCase:
             user_id=user_id,
             scenario_id=scenario.id,
             name=input_data.name,
-            description=input_data.description,
+            profile=input_data.profile,
             stats=CharacterStats(
                 hp=starting_hp, max_hp=starting_hp, level=user_level
             ),

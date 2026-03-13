@@ -6,6 +6,7 @@ ORM 모델과 도메인 엔티티 간 변환을 담당합니다.
 
 from app.game.domain.entities import (
     CharacterEntity,
+    CharacterProfile,
     GameMessageEntity,
     GameSessionEntity,
     ScenarioEntity,
@@ -83,7 +84,7 @@ class CharacterMapper:
             user_id=orm.user_id,
             scenario_id=orm.scenario_id,
             name=orm.name,
-            description=orm.description,
+            profile=(CharacterProfile(**orm.profile) if orm.profile else None),
             stats=stats,
             inventory=orm.inventory or [],
             is_active=orm.is_active,
@@ -95,7 +96,11 @@ class CharacterMapper:
         """도메인 엔티티의 변경사항을 ORM 업데이트 딕셔너리로 변환."""
         return {
             "name": entity.name,
-            "description": entity.description,
+            "profile": (
+                entity.profile.model_dump(exclude_none=True)
+                if entity.profile
+                else {}
+            ),
             "stats": entity.stats.model_dump(),
             "inventory": entity.inventory,
             "is_active": entity.is_active,
@@ -118,6 +123,10 @@ class ScenarioMapper:
             difficulty=ScenarioDifficulty(orm.difficulty),
             system_prompt_override=orm.system_prompt_override,
             max_turns=orm.max_turns,
+            tags=orm.tags or [],
+            thumbnail_url=orm.thumbnail_url,
+            hook=orm.hook,
+            recommended_for=orm.recommended_for,
             is_active=orm.is_active,
             created_at=orm.created_at,
         )

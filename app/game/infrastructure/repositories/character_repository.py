@@ -59,7 +59,11 @@ class CharacterRepositoryImpl(CharacterRepositoryInterface):
                 id=character.id,
                 user_id=character.user_id,
                 name=character.name,
-                description=character.description,
+                profile=(
+                    character.profile.model_dump(exclude_none=True)
+                    if character.profile
+                    else {}
+                ),
                 scenario_id=character.scenario_id,
                 stats=character.stats.model_dump(),
                 inventory=character.inventory,

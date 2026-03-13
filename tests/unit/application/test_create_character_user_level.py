@@ -1,4 +1,4 @@
-"""CreateCharacterUseCase — 유저 게임 레벨 상속 단위 테스트."""
+"""CreateCharacterUseCase — 유저 게임 레벨 및 온보딩 프로필 단위 테스트."""
 
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
@@ -17,7 +17,11 @@ from app.game.application.use_cases.create_character import (
     CreateCharacterInput,
     CreateCharacterUseCase,
 )
-from app.game.domain.entities import CharacterEntity, CharacterStats
+from app.game.domain.entities import (
+    CharacterEntity,
+    CharacterProfile,
+    CharacterStats,
+)
 from app.game.domain.entities.scenario import ScenarioEntity
 from app.game.domain.value_objects import ScenarioDifficulty
 
@@ -36,6 +40,14 @@ def _make_scenario(scenario_id: UUID) -> ScenarioEntity:
     )
 
 
+def _make_profile() -> CharacterProfile:
+    return CharacterProfile(
+        age=28,
+        gender="남성",
+        appearance="낡은 망토를 걸친 전사",
+    )
+
+
 def _make_saved_character(
     user_id: UUID,
     scenario_id: UUID,
@@ -47,7 +59,7 @@ def _make_saved_character(
         user_id=user_id,
         scenario_id=scenario_id,
         name="영웅",
-        description="용감한",
+        profile=_make_profile(),
         stats=CharacterStats(hp=hp, max_hp=hp, level=level),
         inventory=[],
         is_active=True,
@@ -120,7 +132,9 @@ class TestCreateCharacterUserLevel:
         result = await use_case.execute(
             user_id,
             CreateCharacterInput(
-                name="영웅", description="용감한", scenario_id=scenario_id
+                name="영웅",
+                scenario_id=scenario_id,
+                profile=_make_profile(),
             ),
         )
 
@@ -150,7 +164,9 @@ class TestCreateCharacterUserLevel:
         result = await use_case.execute(
             user_id,
             CreateCharacterInput(
-                name="영웅", description="용감한", scenario_id=scenario_id
+                name="영웅",
+                scenario_id=scenario_id,
+                profile=_make_profile(),
             ),
         )
 
@@ -180,7 +196,9 @@ class TestCreateCharacterUserLevel:
         result = await use_case.execute(
             user_id,
             CreateCharacterInput(
-                name="영웅", description="용감한", scenario_id=scenario_id
+                name="영웅",
+                scenario_id=scenario_id,
+                profile=_make_profile(),
             ),
         )
 
@@ -209,10 +227,113 @@ class TestCreateCharacterUserLevel:
         await use_case.execute(
             user_id,
             CreateCharacterInput(
-                name="영웅", description="용감한", scenario_id=scenario_id
+                name="영웅",
+                scenario_id=scenario_id,
+                profile=_make_profile(),
             ),
         )
 
         mock_user_progression.get_user_game_level.assert_called_once_with(
             user_id
         )
+
+    @pytest.mark.asyncio
+    async def test_character_profile_is_saved_with_optional_goal(
+        self,
+        use_case,
+        mock_scenario_repo,
+        mock_user_progression,
+        mock_character_repo,
+        user_id,
+        scenario_id,
+    ):
+        mock_scenario_repo.get_by_id.return_value = _make_scenario(scenario_id)
+        mock_user_progression.get_user_game_level.return_value = 2
+        saved = CharacterEntity(
+            id=get_uuid7(),
+            user_id=user_id,
+            scenario_id=scenario_id,
+            name="세리아",
+            profile=CharacterProfile(
+                age=24,
+                gender="여성",
+                appearance="정제된 귀족풍 복장",
+                goal="가문 재건",
+            ),
+            stats=CharacterStats(hp=110, max_hp=110, level=2),
+            inventory=[],
+            is_active=True,
+            created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        )
+        mock_character_repo.save.return_value = saved
+
+        result = await use_case.execute(
+            user_id,
+            CreateCharacterInput(
+                name="세리아",
+                scenario_id=scenario_id,
+                profile=CharacterProfile(
+                    age=24,
+                    gender="여성",
+                    appearance="정제된 귀족풍 복장",
+                    goal="가문 재건",
+                ),
+            ),
+        )
+
+        assert result.profile.age == 24
+        assert result.profile.gender == "여성"
+        assert result.profile.goal == "가문 재건"
+
+        call_args = mock_character_repo.save.call_args[0][0]
+        assert call_args.profile.goal == "가문 재건"
+        assert "외형: 정제된 귀족풍 복장." in call_args.prompt_profile
+
+    @pytest.mark.asyncio
+    async def test_character_prompt_profile_contains_required_fields_only(
+        self,
+        use_case,
+        mock_scenario_repo,
+        mock_user_progression,
+        mock_character_repo,
+        user_id,
+        scenario_id,
+    ):
+        mock_scenario_repo.get_by_id.return_value = _make_scenario(scenario_id)
+        mock_user_progression.get_user_game_level.return_value = 2
+        saved = CharacterEntity(
+            id=get_uuid7(),
+            user_id=user_id,
+            scenario_id=scenario_id,
+            name="실비아",
+            profile=CharacterProfile(
+                age=27,
+                gender="여성",
+                appearance="검은 단발과 오래된 흉터",
+            ),
+            stats=CharacterStats(hp=110, max_hp=110, level=2),
+            inventory=[],
+            is_active=True,
+            created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        )
+        mock_character_repo.save.return_value = saved
+
+        result = await use_case.execute(
+            user_id,
+            CreateCharacterInput(
+                name="실비아",
+                scenario_id=scenario_id,
+                profile=CharacterProfile(
+                    age=27,
+                    gender="여성",
+                    appearance="검은 단발과 오래된 흉터",
+                ),
+            ),
+        )
+
+        assert result.profile.appearance == "검은 단발과 오래된 흉터"
+
+        call_args = mock_character_repo.save.call_args[0][0]
+        assert "이름: 실비아." in call_args.prompt_profile
+        assert "나이: 27세." in call_args.prompt_profile
+        assert "성별: 여성." in call_args.prompt_profile
