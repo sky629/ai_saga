@@ -6,12 +6,19 @@ These rules are mandatory across all sessions.
 
 1. Always follow [`TEAM_OPERATIONS_GUIDE.md`](TEAM_OPERATIONS_GUIDE.md).
 2. Always follow [`WORKTREE_GUIDE.md`](WORKTREE_GUIDE.md).
-3. Never implement feature work directly on `main`.
-4. For every feature/fix/chore, create and use a dedicated `git worktree`
-   and branch (`feat/*`, `fix/*`, `chore/*`).
-5. Use stage gates for each feature:
+3. Always check the current `Execution orchestration mode` in
+   [`AGENTS.md`](AGENTS.md) before substantial work.
+4. Never implement feature work directly on `main`.
+5. Use a dedicated `git worktree` when required by
+   [`WORKTREE_GUIDE.md`](WORKTREE_GUIDE.md), especially for parallel,
+   isolated, long-running, or high-risk work.
+6. For substantial, multi-phase, delegated, or parallel work, create or
+   update a handoff document under `docs/handoffs/` using
+   [`docs/HANDOFF_TEMPLATE.md`](docs/HANDOFF_TEMPLATE.md).
+7. Use stage gates for each feature:
    Planning -> Design -> Review/Revision -> BE/FE Implementation (TDD) -> QA.
-6. Commit and push only from the corresponding feature worktree branch.
+8. When worktree is used, commit and push from the corresponding feature
+   worktree branch.
 
 ### Commit Message Rule (Mandatory)
 

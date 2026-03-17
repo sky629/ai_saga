@@ -200,4 +200,3 @@ cat .env.example
 ```
 
 **Respond in Korean (응답은 한글로).**
-<!-- OMO_INTERNAL_INITIATOR -->
