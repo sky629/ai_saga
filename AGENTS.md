@@ -44,7 +44,7 @@ uv run uvicorn app.main:app --reload     # http://localhost:8000
 | Docstrings | Korean, module-level `"""..."""` for every file |
 | Models | Pydantic `BaseModel` (frozen for value objects) |
 | IDs | UUID v7 via `uuid_utils.uuid7()` — never use `uuid4` |
-| Commit messages | **Must be Korean** (enforced by pre-commit hook) |
+| Commit messages | `type: 한국어 제목` 형식 필수 (pre-commit hook enforced) |
 
 ### Import Order (isort profile=black)
 
@@ -130,6 +130,31 @@ Every feature follows Red → Green → Refactor:
 Layer order: Domain → Application → Infrastructure → Presentation.
 Never write production code without a failing test.
 
+## Execution Orchestration Rules
+
+Execution orchestration mode: sub-agent
+
+- Change only the value on the line above to switch the default
+  orchestration style between `thread` and `sub-agent`.
+- For either mode, follow `TEAM_OPERATIONS_GUIDE.md` and use
+  `docs/HANDOFF_TEMPLATE.md` for handoff artifacts, storing filled files
+  in `docs/handoffs/`.
+- For substantial, multi-phase, delegated, or parallel work, create or
+  update a handoff document in `docs/handoffs/`.
+- When resuming substantial work in a new session, check the relevant
+  handoff document in `docs/handoffs/` before proceeding.
+- If mode is `thread`, prefer phase-based thread handoff and use
+  delegation only when explicitly requested or clearly justified.
+- If mode is `sub-agent`, do not spawn sub-agents unless the task meets
+  the activation, parallelization, and write-scope rules in
+  `TEAM_OPERATIONS_GUIDE.md`.
+- For parallel implementation or isolated high-risk work, follow
+  `WORKTREE_GUIDE.md`.
+- Prefer separate worktrees for independent implementation owners when
+  tasks run in parallel or conflict risk is non-trivial.
+- The main agent owns final integration, final user communication, and
+  final acceptance judgment.
+
 ## Key Tech Decisions
 
 | Area | Choice |
@@ -156,7 +181,7 @@ Runs automatically on `git commit`:
 4. trailing-whitespace, end-of-file-fixer, check-yaml, check-json
 5. check-added-large-files (max 5MB)
 6. check-merge-conflict, debug-statements
-7. Commit message Korean validation
+7. Commit message format validation (`type: 한국어 제목`)
 
 ## Quick Reference
 

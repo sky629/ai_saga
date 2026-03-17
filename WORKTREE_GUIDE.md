@@ -1,6 +1,8 @@
 # Git Worktree Guide
 
 This guide standardizes feature development using `git worktree`.
+Use it together with `TEAM_OPERATIONS_GUIDE.md` when work is delegated,
+parallelized, or split across isolated ownership boundaries.
 
 ## 1. Why Worktree
 
@@ -18,6 +20,32 @@ Use worktrees to run multiple branches in parallel without repeated checkout:
 3. One active owner per worktree.
 4. Use naming conventions for both branch and folder.
 5. Remove worktree after merge.
+
+## 2.1 When Worktree Is Required
+
+Worktree usage is mandatory for:
+
+- Parallel implementation by multiple people or agents
+- Backend/frontend parallel work after contract freeze
+- Long-running feature branches
+- High-conflict or high-churn work touching shared areas
+- Risky refactors, migrations, or release/hotfix work that must stay
+  isolated
+
+## 2.2 When Worktree Is Recommended
+
+- Multi-step feature work that will take more than one session
+- QA validation on a branch separate from active implementation
+- Review or repro work that benefits from a clean isolated tree
+
+## 2.3 When Worktree May Be Skipped
+
+- Small single-agent bug fixes
+- Single-file or low-risk document changes
+- Short-lived local tasks with no ownership conflict
+
+If worktree is skipped, the branch must still not be `main`, and the
+task must not conflict with active delegated work.
 
 ## 3. Naming Conventions
 
@@ -87,6 +115,16 @@ git worktree prune
    - frontend
    - QA/fixes
 
+## 6.1 Codex Use in Worktrees
+
+- The main agent decides whether a task needs isolated worktrees.
+- If sub-agents or parallel workers are used, assign one worktree per
+  implementation owner when feasible.
+- Shared integration files should remain under main-agent control unless
+  explicitly assigned.
+- If a worktree path is outside the default writable workspace, ensure
+  the execution environment allows writing there before delegating.
+
 ## 7. Merge/Rebase Policy
 
 - Rebase before opening final PR:
@@ -151,7 +189,10 @@ git worktree add ../ai_saga-wt/wt-hotfix-auth -b fix/auth-token origin/main
 
 ## 11. Team Policy Summary
 
-- Mandatory: all feature work through worktrees
+- Mandatory for parallel, isolated, long-running, or high-risk work:
+  use worktrees
 - Mandatory: branch/worktree naming convention
 - Mandatory: cleanup after merge
 - Recommended: one role, one active worktree at a time
+- Allowed: small single-agent work may stay outside a dedicated worktree
+  if conflict risk is low
