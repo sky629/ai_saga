@@ -335,3 +335,40 @@ class TestRAGContextBuilder:
 
         assert len(selected) == 1
         assert selected[0].content == "유사도 낮지만 최신 메시지"
+
+    def test_select_relevant_rag_messages_uses_distance_score(self):
+        """입력 순서가 아니라 실제 distance 점수를 우선 반영해야 함."""
+        session_id = get_uuid7()
+        now = datetime.now(timezone.utc)
+
+        lower_similarity = GameMessageEntity(
+            id=get_uuid7(),
+            session_id=session_id,
+            role=MessageRole.ASSISTANT,
+            content="입력 순서는 앞이지만 distance가 나쁜 메시지",
+            parsed_response={"state_changes": {"location": "아지트"}},
+            similarity_distance=0.29,
+            created_at=now - timedelta(minutes=1),
+        )
+        higher_similarity = GameMessageEntity(
+            id=get_uuid7(),
+            session_id=session_id,
+            role=MessageRole.ASSISTANT,
+            content="입력 순서는 뒤지만 distance가 좋은 메시지",
+            parsed_response={"state_changes": {"location": "아지트"}},
+            similarity_distance=0.05,
+            created_at=now - timedelta(days=1),
+        )
+
+        selected = RAGContextBuilder.select_relevant_rag_messages(
+            rag_messages=[lower_similarity, higher_similarity],
+            current_location="아지트",
+            max_messages=1,
+            similarity_weight=0.9,
+            recency_weight=0.1,
+        )
+
+        assert len(selected) == 1
+        assert (
+            selected[0].content == "입력 순서는 뒤지만 distance가 좋은 메시지"
+        )

@@ -7,6 +7,7 @@ ORM 모델과 도메인 엔티티 간 변환을 담당합니다.
 from app.game.domain.entities import (
     CharacterEntity,
     CharacterProfile,
+    GameMemoryEntity,
     GameMessageEntity,
     GameSessionEntity,
     ScenarioEntity,
@@ -14,6 +15,7 @@ from app.game.domain.entities import (
 from app.game.domain.entities.character import CharacterStats
 from app.game.domain.value_objects import (
     EndingType,
+    GameMemoryType,
     MessageRole,
     ScenarioDifficulty,
     ScenarioGenre,
@@ -21,6 +23,7 @@ from app.game.domain.value_objects import (
 )
 from app.game.infrastructure.persistence.models.game_models import (
     Character,
+    GameMemoryDocument,
     GameMessage,
     GameSession,
     Scenario,
@@ -146,7 +149,6 @@ class GameMessageMapper:
             parsed_response=orm.parsed_response,
             token_count=orm.token_count,
             image_url=orm.image_url,
-            embedding=orm.embedding,
             created_at=orm.created_at,
         )
 
@@ -160,3 +162,21 @@ class GameMessageMapper:
             "parsed_response": entity.parsed_response,
             "token_count": entity.token_count,
         }
+
+
+class GameMemoryDocumentMapper:
+    """GameMemoryDocument ORM ↔ GameMemoryEntity 매퍼."""
+
+    @staticmethod
+    def to_entity(orm: GameMemoryDocument) -> GameMemoryEntity:
+        return GameMemoryEntity(
+            id=orm.id,
+            session_id=orm.session_id,
+            source_message_id=orm.source_message_id,
+            role=MessageRole(orm.role),
+            memory_type=GameMemoryType(orm.memory_type),
+            content=orm.content,
+            parsed_response=orm.parsed_response,
+            embedding=orm.embedding,
+            created_at=orm.created_at,
+        )

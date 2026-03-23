@@ -1,11 +1,7 @@
 """Tests for Game Master Prompt Templates - TDD RED Phase."""
 
 from app.game.domain.value_objects import GameState
-from app.llm.prompts.game_master import (
-    GameMasterPrompt,
-    build_action_prompt,
-    build_system_prompt,
-)
+from app.llm.prompts.game_master import GameMasterPrompt, build_system_prompt
 
 
 class TestGameMasterPrompt:
@@ -35,29 +31,6 @@ class TestGameMasterPrompt:
 
         # Should include response format rules
         assert "JSON" in prompt or "응답" in prompt
-
-    def test_build_action_prompt_with_player_action(self):
-        """Action prompt should format player's action."""
-        prompt = build_action_prompt(
-            player_action="북쪽으로 이동한다",
-            character_name="용사 김철수",
-            current_location="마을 광장",
-        )
-
-        assert "북쪽으로 이동" in prompt
-        assert "용사 김철수" in prompt or "김철수" in prompt
-
-    def test_build_action_prompt_with_inventory(self):
-        """Action prompt should include character state."""
-        prompt = build_action_prompt(
-            player_action="검을 휘두른다",
-            character_name="전사",
-            current_location="동굴",
-            inventory=["철검", "가죽 갑옷", "치료 물약"],
-        )
-
-        assert "철검" in prompt
-        assert "동굴" in prompt
 
     def test_game_master_prompt_dataclass(self):
         """GameMasterPrompt should be a proper dataclass."""

@@ -13,6 +13,7 @@ from app.common.storage.redis import pools
 from app.game.application.ports import (
     CacheServiceInterface,
     CharacterRepositoryInterface,
+    GameMemoryRepositoryInterface,
     GameMessageRepositoryInterface,
     GameSessionRepositoryInterface,
     ImageGenerationServiceInterface,
@@ -47,6 +48,7 @@ from app.game.infrastructure.adapters.image_service import (
 )
 from app.game.infrastructure.repositories import (
     CharacterRepositoryImpl,
+    GameMemoryRepositoryImpl,
     GameMessageRepositoryImpl,
     GameSessionRepositoryImpl,
     ScenarioRepositoryImpl,
@@ -131,6 +133,10 @@ class GameContainer:
         """메시지 저장소."""
         return GameMessageRepositoryImpl(self._db)
 
+    def memory_repository(self) -> GameMemoryRepositoryInterface:
+        """검색 메모리 저장소."""
+        return GameMemoryRepositoryImpl(self._db)
+
     def user_progression_repository(self) -> UserProgressionInterface:
         """유저 게임 진행도 저장소."""
         return UserProgressionRepositoryImpl(self._db)
@@ -142,6 +148,7 @@ class GameContainer:
         return ProcessActionUseCase(
             session_repository=self.session_repository(),
             message_repository=self.message_repository(),
+            memory_repository=self.memory_repository(),
             character_repository=self.character_repository(),
             scenario_repository=self.scenario_repository(),
             llm_service=self.llm_service,

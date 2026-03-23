@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from app.game.domain.entities import (
     CharacterEntity,
+    GameMemoryEntity,
     GameMessageEntity,
     GameSessionEntity,
     ScenarioEntity,
@@ -136,27 +137,6 @@ class GameMessageRepositoryInterface(ABC):
         pass
 
     @abstractmethod
-    async def get_similar_messages(
-        self,
-        embedding: list[float],
-        session_id: UUID,
-        limit: int = 5,
-        distance_threshold: float = 0.3,
-    ) -> list[GameMessageEntity]:
-        """벡터 유사도 기반 메시지 검색.
-
-        Args:
-            embedding: 검색 기준 벡터 (768차원)
-            session_id: 세션 ID (같은 세션 내에서만 검색)
-            limit: 최대 반환 개수
-            distance_threshold: 유사도 임계값 (코사인 거리, 낮을수록 유사)
-
-        Returns:
-            유사도 높은 순으로 정렬된 메시지 목록
-        """
-        pass
-
-    @abstractmethod
     async def get_by_id(self, message_id: UUID) -> Optional[GameMessageEntity]:
         pass
 
@@ -164,6 +144,27 @@ class GameMessageRepositoryInterface(ABC):
     async def update_image_url(
         self, message_id: UUID, image_url: str
     ) -> GameMessageEntity:
+        pass
+
+
+class GameMemoryRepositoryInterface(ABC):
+    """게임 검색 메모리 저장소 인터페이스."""
+
+    @abstractmethod
+    async def create(self, memory: GameMemoryEntity) -> GameMemoryEntity:
+        """검색용 메모리 생성."""
+        pass
+
+    @abstractmethod
+    async def get_similar_memories(
+        self,
+        embedding: list[float],
+        session_id: UUID,
+        limit: int = 5,
+        distance_threshold: float = 0.3,
+        exclude_memory_ids: Optional[list[UUID]] = None,
+    ) -> list[GameMemoryEntity]:
+        """벡터 유사도 기반 메모리 검색."""
         pass
 
 

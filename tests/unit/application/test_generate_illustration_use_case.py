@@ -50,7 +50,6 @@ def _make_ai_message(
         parsed_response=None,
         token_count=None,
         image_url=image_url,
-        embedding=None,
         created_at=get_utc_datetime(),
     )
 
@@ -211,7 +210,6 @@ class TestGenerateIllustrationUseCase:
             parsed_response=None,
             token_count=None,
             image_url=None,
-            embedding=None,
             created_at=get_utc_datetime(),
         )
 

@@ -264,7 +264,6 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.Column("token_count", sa.Integer(), nullable=True),
-        sa.Column("embedding", VECTOR(dim=768), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -281,9 +280,55 @@ def upgrade() -> None:
         ["session_id"],
         unique=False,
     )
+    op.create_table(
+        "game_memory_documents",
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("session_id", sa.UUID(), nullable=False),
+        sa.Column("source_message_id", sa.UUID(), nullable=True),
+        sa.Column("role", sa.String(length=20), nullable=False),
+        sa.Column("memory_type", sa.String(length=50), nullable=False),
+        sa.Column("content", sa.Text(), nullable=False),
+        sa.Column(
+            "parsed_response",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+        ),
+        sa.Column("embedding", VECTOR(dim=768), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(["session_id"], ["game_sessions.id"]),
+        sa.ForeignKeyConstraint(["source_message_id"], ["game_messages.id"]),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index(
+        op.f("ix_game_memory_documents_session_id"),
+        "game_memory_documents",
+        ["session_id"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_game_memory_documents_source_message_id"),
+        "game_memory_documents",
+        ["source_message_id"],
+        unique=False,
+    )
 
 
 def downgrade() -> None:
+    op.drop_index(
+        op.f("ix_game_memory_documents_source_message_id"),
+        table_name="game_memory_documents",
+    )
+    op.drop_index(
+        op.f("ix_game_memory_documents_session_id"),
+        table_name="game_memory_documents",
+    )
+    op.drop_table("game_memory_documents")
+
     op.drop_index(
         op.f("ix_game_messages_session_id"), table_name="game_messages"
     )

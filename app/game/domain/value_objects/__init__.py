@@ -3,6 +3,7 @@
 from .action_type import ActionType
 from .dice import DiceCheckType, DiceResult
 from .ending_type import EndingType
+from .game_memory_type import GameMemoryType
 from .game_state import GameState, StateChanges
 from .message_role import MessageRole
 from .scenario_difficulty import ScenarioDifficulty
@@ -13,6 +14,7 @@ __all__ = [
     "SessionStatus",
     "ActionType",
     "EndingType",
+    "GameMemoryType",
     "MessageRole",
     "ScenarioDifficulty",
     "ScenarioGenre",

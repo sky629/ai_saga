@@ -19,6 +19,7 @@ from app.common.utils.id_generator import get_uuid7
 from app.game.application.ports import (
     CacheServiceInterface,
     CharacterRepositoryInterface,
+    GameMemoryRepositoryInterface,
     GameMessageRepositoryInterface,
     GameSessionRepositoryInterface,
     ImageGenerationServiceInterface,
@@ -26,9 +27,16 @@ from app.game.application.ports import (
     ScenarioRepositoryInterface,
     UserProgressionInterface,
 )
+from app.game.application.services.game_memory_text_builder import (
+    GameMemoryTextBuilder,
+)
 from app.game.application.services.rag_context_builder import RAGContextBuilder
+from app.game.application.services.turn_prompt_composer import (
+    TurnPromptComposer,
+)
 from app.game.domain.entities import (
     CharacterEntity,
+    GameMemoryEntity,
     GameMessageEntity,
     GameSessionEntity,
 )
@@ -40,6 +48,7 @@ from app.game.domain.services import (
 from app.game.domain.value_objects import (
     ActionType,
     EndingType,
+    GameMemoryType,
     GameState,
     MessageRole,
     SessionStatus,
@@ -57,13 +66,27 @@ from app.game.presentation.routes.schemas.response import (
     GameMessageResponse,
 )
 from app.llm.embedding_service_interface import EmbeddingServiceInterface
-from app.llm.prompts.game_master import (
-    GameMasterPrompt,
-    build_dice_result_section,
-)
+from app.llm.prompts.game_master import build_dice_result_section
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
+
+
+class _NullGameMemoryRepository:
+    """명시적 메모리 저장소가 없을 때 사용하는 no-op 구현."""
+
+    async def create(self, memory: GameMemoryEntity) -> GameMemoryEntity:
+        return memory
+
+    async def get_similar_memories(
+        self,
+        embedding: list[float],
+        session_id: UUID,
+        limit: int = 5,
+        distance_threshold: float = 0.3,
+        exclude_memory_ids: Optional[list[UUID]] = None,
+    ) -> list[GameMemoryEntity]:
+        return []
 
 
 class ProcessActionInput(BaseModel):
@@ -100,11 +123,13 @@ class ProcessActionUseCase:
         llm_service: LLMServiceInterface,
         cache_service: CacheServiceInterface,
         embedding_service: EmbeddingServiceInterface,
+        memory_repository: Optional[GameMemoryRepositoryInterface] = None,
         image_service: Optional[ImageGenerationServiceInterface] = None,
         user_progression: Optional[UserProgressionInterface] = None,
     ):
         self._session_repo = session_repository
         self._message_repo = message_repository
+        self._memory_repo = memory_repository or _NullGameMemoryRepository()
         self._character_repo = character_repository
         self._scenario_repo = scenario_repository
         self._llm = llm_service
@@ -168,10 +193,21 @@ class ProcessActionUseCase:
             session_id=session.id,
             role=MessageRole.USER,
             content=input_data.action,
-            embedding=action_embedding,
             created_at=get_utc_datetime(),
         )
         await self._message_repo.create(user_message)
+
+        user_memory = GameMemoryEntity(
+            id=get_uuid7(),
+            session_id=session.id,
+            source_message_id=user_message.id,
+            role=MessageRole.USER,
+            memory_type=GameMemoryType.USER_ACTION,
+            content=input_data.action,
+            embedding=action_embedding,
+            created_at=get_utc_datetime(),
+        )
+        await self._memory_repo.create(user_memory)
 
         # 7. Build hybrid context (Sliding Window + RAG)
         # 7.1. Get recent messages (sliding window)
@@ -179,33 +215,36 @@ class ProcessActionUseCase:
         recent_messages = await self._message_repo.get_recent_messages(
             session.id, limit=recent_limit
         )
+        history_messages = [
+            message
+            for message in recent_messages
+            if message.id != user_message.id
+        ]
 
-        # 7.2. Get similar messages (RAG)
+        # 7.2. Get similar memories (RAG)
         rag_limit = max(0, settings.rag_similar_messages_limit)
         rag_candidate_limit = max(rag_limit * 3, rag_limit)
-        rag_messages = await self._message_repo.get_similar_messages(
+        rag_memories = await self._memory_repo.get_similar_memories(
             embedding=action_embedding,
             session_id=session.id,
             limit=rag_candidate_limit,
             distance_threshold=settings.rag_distance_threshold,
+            exclude_memory_ids=[user_memory.id],
         )
 
-        # 7.3. Merge contexts (state consistency + recency weighted RAG)
-        selected_rag_messages = RAGContextBuilder.select_relevant_rag_messages(
-            rag_messages=rag_messages,
+        # 7.3. Select recalled memories (state consistency + weighted RAG)
+        selected_rag_memories = RAGContextBuilder.select_relevant_rag_messages(
+            rag_messages=rag_memories,
             current_location=session.current_location,
             max_messages=rag_limit,
             similarity_weight=settings.rag_similarity_weight,
             recency_weight=settings.rag_recency_weight,
         )
-        all_context_messages = RAGContextBuilder.merge_contexts(
-            recent_messages, selected_rag_messages
-        )
 
         # 8. Check if final turn (domain logic)
         if GameMasterService.should_end_game(session):
             session, response = await self._handle_ending(
-                session, all_context_messages, user_id
+                session, recent_messages, user_id
             )
         else:
             session, response = await self._handle_normal_turn(
@@ -213,7 +252,8 @@ class ProcessActionUseCase:
                 user_id,
                 input_data.action,
                 input_data.action_type,
-                all_context_messages,
+                history_messages,
+                selected_rag_memories,
             )
 
         # 9. Save session state
@@ -264,19 +304,14 @@ class ProcessActionUseCase:
         user_id: UUID,
         player_action: str,
         action_type_hint: Optional[str],
-        recent_messages: list[GameMessageEntity],
+        conversation_history: list[GameMessageEntity],
+        recalled_memories: list[GameMemoryEntity],
     ) -> tuple[
         GameSessionEntity, Union[GameActionResponse, GameEndingResponse]
     ]:
         """일반 턴 처리."""
-        # Build prompt (도메인 서비스 활용)
-        messages_for_llm = [
-            {"role": msg.role.value, "content": msg.content}
-            for msg in recent_messages
-        ]
-
         recent_events = GameMasterService.summarize_recent_events(
-            [msg.content for msg in recent_messages if msg.is_ai_response]
+            [msg.content for msg in conversation_history if msg.is_ai_response]
         )
 
         # Parse current game state
@@ -309,22 +344,26 @@ class ProcessActionUseCase:
             )
             dice_result_section = build_dice_result_section(dice_result)
 
-        prompt = GameMasterPrompt(
+        prompt = TurnPromptComposer.compose(
             scenario_name=scenario.name,
             world_setting=scenario.world_setting,
             character_name=character.name,
             character_description=character.prompt_profile,
             current_location=session.current_location,
-            recent_events=recent_events,
-            inventory=character.inventory,
             game_state=game_state,
+            inventory=character.inventory,
+            player_action=player_action,
+            action_type=action_type,
+            conversation_history=conversation_history,
+            recalled_memories=recalled_memories,
+            recent_events_summary=recent_events,
             dice_result_section=dice_result_section,
         )
 
         # Generate LLM response
         llm_response = await self._llm.generate_response(
             system_prompt=prompt.system_prompt,
-            messages=messages_for_llm,
+            messages=prompt.messages,
         )
 
         # Try to parse JSON response
@@ -486,7 +525,11 @@ class ProcessActionUseCase:
                 session = session.complete(EndingType.DEFEAT)
                 await self._session_repo.save(session)
                 ending_response = await self._handle_death_ending(
-                    session, character, narrative, recent_messages, user_id
+                    session,
+                    character,
+                    narrative,
+                    conversation_history,
+                    user_id,
                 )
                 return session, ending_response
         else:
@@ -502,12 +545,7 @@ class ProcessActionUseCase:
 
         image_url = None
 
-        # Generate embedding for AI response
-        ai_embedding = await self._embedding.generate_embedding(
-            llm_response.content
-        )
-
-        # Save AI message with image_url and embedding
+        # Save AI message with image_url
         ai_message = GameMessageEntity(
             id=get_uuid7(),
             session_id=session.id,
@@ -518,10 +556,29 @@ class ProcessActionUseCase:
                 llm_response.usage.total_tokens if llm_response.usage else None
             ),
             image_url=image_url,
-            embedding=ai_embedding,
             created_at=get_utc_datetime(),
         )
         await self._message_repo.create(ai_message)
+
+        ai_memory_content = GameMemoryTextBuilder.build_assistant_search_text(
+            raw_content=llm_response.content,
+            parsed_response=persisted_parsed_response,
+        )
+        ai_embedding = await self._embedding.generate_embedding(
+            ai_memory_content
+        )
+        ai_memory = GameMemoryEntity(
+            id=get_uuid7(),
+            session_id=session.id,
+            source_message_id=ai_message.id,
+            role=MessageRole.ASSISTANT,
+            memory_type=GameMemoryType.ASSISTANT_NARRATIVE,
+            content=ai_memory_content,
+            parsed_response=persisted_parsed_response,
+            embedding=ai_embedding,
+            created_at=get_utc_datetime(),
+        )
+        await self._memory_repo.create(ai_memory)
 
         dice_result_response = None
         if parsed and dice_applied and dice_result is not None:

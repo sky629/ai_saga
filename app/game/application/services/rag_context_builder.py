@@ -4,7 +4,12 @@ Application service for merging sliding window and RAG contexts.
 Handles deduplication and chronological sorting.
 """
 
+from typing import TypeAlias
+
+from app.game.domain.entities.game_memory import GameMemoryEntity
 from app.game.domain.entities.game_message import GameMessageEntity
+
+RAGContextEntity: TypeAlias = GameMessageEntity | GameMemoryEntity
 
 
 class RAGContextBuilder:
@@ -12,12 +17,12 @@ class RAGContextBuilder:
 
     @staticmethod
     def select_relevant_rag_messages(
-        rag_messages: list[GameMessageEntity],
+        rag_messages: list[RAGContextEntity],
         current_location: str,
         max_messages: int = 2,
         similarity_weight: float = 0.7,
         recency_weight: float = 0.3,
-    ) -> list[GameMessageEntity]:
+    ) -> list[RAGContextEntity]:
         """상태 일관성과 최신성 가중치를 반영해 RAG 후보를 선택."""
         if max_messages <= 0 or not rag_messages:
             return []
@@ -39,10 +44,6 @@ class RAGContextBuilder:
         if similarity_weight == 0 and recency_weight == 0:
             similarity_weight = 1.0
 
-        similarity_rank_map = {
-            message.id: index
-            for index, message in enumerate(filtered_messages)
-        }
         recency_sorted = sorted(
             filtered_messages,
             key=lambda message: message.created_at,
@@ -52,10 +53,13 @@ class RAGContextBuilder:
             message.id: index for index, message in enumerate(recency_sorted)
         }
 
-        def rank_score(message: GameMessageEntity) -> float:
-            similarity_rank = similarity_rank_map[message.id]
+        def rank_score(message: RAGContextEntity) -> float:
             recency_rank = recency_rank_map[message.id]
-            similarity_score = 1 / (similarity_rank + 1)
+            similarity_score = (
+                1 - message.similarity_distance
+                if message.similarity_distance is not None
+                else 0.0
+            )
             recency_score = 1 / (recency_rank + 1)
             return (
                 similarity_weight * similarity_score
@@ -75,7 +79,7 @@ class RAGContextBuilder:
     @staticmethod
     def merge_contexts(
         recent_messages: list[GameMessageEntity],
-        rag_messages: list[GameMessageEntity],
+        rag_messages: list[RAGContextEntity],
     ) -> list[GameMessageEntity]:
         """Merge sliding window and RAG contexts with deduplication.
 
@@ -107,7 +111,7 @@ class RAGContextBuilder:
 
     @staticmethod
     def _is_state_consistent(
-        message: GameMessageEntity, current_location: str
+        message: RAGContextEntity, current_location: str
     ) -> bool:
         message_location = RAGContextBuilder._extract_location(message)
         if not message_location:
@@ -125,7 +129,7 @@ class RAGContextBuilder:
         return normalized_current == normalized_message
 
     @staticmethod
-    def _extract_location(message: GameMessageEntity) -> str | None:
+    def _extract_location(message: RAGContextEntity) -> str | None:
         parsed = message.parsed_response
         if not isinstance(parsed, dict):
             return None

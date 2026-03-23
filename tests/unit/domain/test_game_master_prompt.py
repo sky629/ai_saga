@@ -175,30 +175,6 @@ class TestBuildSystemPrompt:
 class TestGameMasterPrompt:
     """Tests for GameMasterPrompt dataclass."""
 
-    def test_action_prompt_contains_dice_result(self):
-        """Test action prompt includes dice result section when provided."""
-        from app.llm.prompts.game_master import build_action_prompt
-
-        result = build_action_prompt(
-            player_action="건물 밖으로 나간다",
-            character_name="용사",
-            current_location="건물 안",
-            dice_result_section="🎲 1d20+2 = 8 vs DC 12 → 실패...",
-        )
-        assert "🎲 1d20+2 = 8 vs DC 12 → 실패..." in result
-
-    def test_action_prompt_without_dice_result(self):
-        """Test action prompt handles missing dice result gracefully."""
-        from app.llm.prompts.game_master import build_action_prompt
-
-        result = build_action_prompt(
-            player_action="대화한다",
-            character_name="용사",
-            current_location="마을",
-        )
-        assert "용사" in result
-        assert "대화한다" in result
-
     def test_game_master_prompt_creation(self):
         """Test GameMasterPrompt can be created with basic fields."""
         prompt = GameMasterPrompt(
@@ -273,22 +249,6 @@ class TestGameMasterPrompt:
         assert "## 주사위 판정 결과" not in system_prompt
         assert "탐험" in system_prompt
 
-    def test_game_master_prompt_build_action(self):
-        """Test build_action method generates action prompt."""
-        prompt = GameMasterPrompt(
-            scenario_name="던전",
-            world_setting="판타지",
-            character_name="용사",
-            current_location="방",
-            inventory=["검", "방패"],
-        )
-        action_prompt = prompt.build_action("북쪽으로 이동한다")
-        assert "용사" in action_prompt
-        assert "방" in action_prompt
-        assert "검" in action_prompt
-        assert "방패" in action_prompt
-        assert "북쪽으로 이동한다" in action_prompt
-
     def test_game_master_prompt_with_all_fields(self):
         """Test GameMasterPrompt with all fields populated."""
         dice_result = DiceResult(
@@ -304,7 +264,6 @@ class TestGameMasterPrompt:
             character_name="영웅",
             current_location="왕좌의 방",
             character_description="전설의 영웅",
-            recent_events="보스와 만남",
             inventory=["전설의 검", "불사의 갑옷"],
             dice_result_section=dice_section,
         )

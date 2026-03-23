@@ -1,6 +1,7 @@
 """Game Domain Entities - Pure Pydantic models for business logic."""
 
 from .character import CharacterEntity, CharacterProfile, CharacterStats
+from .game_memory import GameMemoryEntity
 from .game_message import GameMessageEntity
 from .game_session import GameSessionEntity
 from .scenario import ScenarioEntity
@@ -11,5 +12,6 @@ __all__ = [
     "CharacterStats",
     "CharacterProfile",
     "ScenarioEntity",
+    "GameMemoryEntity",
     "GameMessageEntity",
 ]

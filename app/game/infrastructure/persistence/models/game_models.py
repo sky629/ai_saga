@@ -200,16 +200,18 @@ class GameSession(Base):
         back_populates="session",
         order_by="GameMessage.created_at",
     )
+    memories: Mapped[list["GameMemoryDocument"]] = relationship(
+        "GameMemoryDocument",
+        back_populates="session",
+        order_by="GameMemoryDocument.created_at",
+    )
 
     def __repr__(self):
         return f"<GameSession(id={self.id}, status={self.status})>"
 
 
 class GameMessage(Base):
-    """Message in a game session (player action or AI response).
-
-    Includes embedding vector for RAG-based context retrieval.
-    """
+    """Message in a game session (player action or AI response)."""
 
     __tablename__ = "game_messages"
 
@@ -235,11 +237,6 @@ class GameMessage(Base):
     # Token usage for this message
     token_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
-    # Vector embedding for RAG (768 dimensions for Gemini text-embedding-004)
-    embedding: Mapped[Optional[list[float]]] = mapped_column(
-        Vector(768), nullable=True
-    )
-
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -254,3 +251,45 @@ class GameMessage(Base):
 
     def __repr__(self):
         return f"<GameMessage(id={self.id}, role={self.role})>"
+
+
+class GameMemoryDocument(Base):
+    """검색용 게임 메모리 문서."""
+
+    __tablename__ = "game_memory_documents"
+
+    id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid7
+    )
+    session_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("game_sessions.id"),
+        nullable=False,
+        index=True,
+    )
+    source_message_id: Mapped[Optional[UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("game_messages.id"),
+        nullable=True,
+        index=True,
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    memory_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    parsed_response: Mapped[Optional[dict]] = mapped_column(
+        JSONB, nullable=True
+    )
+    embedding: Mapped[list[float]] = mapped_column(Vector(768), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    session: Mapped["GameSession"] = relationship(
+        "GameSession", back_populates="memories"
+    )
+    source_message: Mapped[Optional["GameMessage"]] = relationship(
+        "GameMessage"
+    )
+
+    def __repr__(self):
+        return f"<GameMemoryDocument(id={self.id}, type={self.memory_type})>"
