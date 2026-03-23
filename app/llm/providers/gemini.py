@@ -4,6 +4,8 @@ Uses Google's new genai SDK to interact with Gemini models.
 """
 
 import logging
+import math
+import re
 
 from google import genai
 from google.genai import types
@@ -20,6 +22,23 @@ from app.llm.dto.llm_response import LLMResponse, TokenUsage
 from app.llm.providers.base import LLMProvider
 
 logger = logging.getLogger("uvicorn")
+
+
+def _extract_retry_after_seconds(error: Exception) -> int | None:
+    """Gemini quota 에러 문자열에서 retry delay를 추출한다."""
+    error_text = str(error)
+
+    direct_match = re.search(
+        r"Please retry in\s+([0-9]+(?:\.[0-9]+)?)s", error_text
+    )
+    if direct_match:
+        return max(1, math.ceil(float(direct_match.group(1))))
+
+    detail_match = re.search(r"'retryDelay': '([0-9]+)s'", error_text)
+    if detail_match:
+        return max(1, int(detail_match.group(1)))
+
+    return None
 
 
 class GeminiProvider(LLMProvider):
@@ -93,7 +112,8 @@ class GeminiProvider(LLMProvider):
             # Check for 429 Too Many Requests or quota exhaustion
             if e.code == 429 or "RESOURCE_EXHAUSTED" in str(e):
                 raise TooManyRequests(
-                    message="Gemini API Quota Exceeded. Please try again later."
+                    message="Gemini API Quota Exceeded. Please try again later.",
+                    retry_after_seconds=_extract_retry_after_seconds(e),
                 )
             raise e
         except Exception as e:

@@ -4,6 +4,8 @@ Uses Google's genai SDK to generate text embeddings for RAG.
 """
 
 import logging
+import math
+import re
 
 from google import genai
 from google.genai.errors import ClientError
@@ -18,6 +20,23 @@ from app.common.exception import TooManyRequests
 from app.llm.embedding_service_interface import EmbeddingServiceInterface
 
 logger = logging.getLogger("uvicorn")
+
+
+def _extract_retry_after_seconds(error: Exception) -> int | None:
+    """Gemini quota 에러 문자열에서 retry delay를 추출한다."""
+    error_text = str(error)
+
+    direct_match = re.search(
+        r"Please retry in\s+([0-9]+(?:\.[0-9]+)?)s", error_text
+    )
+    if direct_match:
+        return max(1, math.ceil(float(direct_match.group(1))))
+
+    detail_match = re.search(r"'retryDelay': '([0-9]+)s'", error_text)
+    if detail_match:
+        return max(1, int(detail_match.group(1)))
+
+    return None
 
 
 class GeminiEmbeddingProvider(EmbeddingServiceInterface):
@@ -103,7 +122,10 @@ class GeminiEmbeddingProvider(EmbeddingServiceInterface):
             # Handle rate limiting
             if "429" in str(e) or "quota" in str(e).lower():
                 logger.warning(f"Gemini API rate limit hit: {e}")
-                raise TooManyRequests("Gemini API rate limit exceeded") from e
+                raise TooManyRequests(
+                    message="Gemini API rate limit exceeded",
+                    retry_after_seconds=_extract_retry_after_seconds(e),
+                ) from e
 
             # Re-raise other client errors
             logger.error(f"Gemini API error: {e}")

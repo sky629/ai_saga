@@ -33,7 +33,11 @@ def setup_test_redis():
     """테스트 환경에서 Redis를 localhost로 설정."""
     # Docker Compose 'redis' 서비스명을 localhost로 변경
     original_redis_url = os.environ.get("REDIS_URL")
+    original_redis_default_db = os.environ.get("REDIS_DEFAULT_DB")
+    original_redis_auth_db = os.environ.get("REDIS_AUTH_DB")
     os.environ["REDIS_URL"] = "redis://localhost:6379"
+    os.environ["REDIS_DEFAULT_DB"] = "15"
+    os.environ["REDIS_AUTH_DB"] = "14"
 
     yield
 
@@ -42,6 +46,16 @@ def setup_test_redis():
         os.environ["REDIS_URL"] = original_redis_url
     else:
         del os.environ["REDIS_URL"]
+
+    if original_redis_default_db is not None:
+        os.environ["REDIS_DEFAULT_DB"] = original_redis_default_db
+    else:
+        del os.environ["REDIS_DEFAULT_DB"]
+
+    if original_redis_auth_db is not None:
+        os.environ["REDIS_AUTH_DB"] = original_redis_auth_db
+    else:
+        del os.environ["REDIS_AUTH_DB"]
 
 
 @pytest_asyncio.fixture

@@ -12,6 +12,8 @@ import pytest
 os.environ["POSTGRES_HOST"] = "localhost"
 os.environ["TEST_POSTGRES_HOST"] = "localhost"
 os.environ["REDIS_URL"] = "redis://localhost:6379"
+os.environ["REDIS_DEFAULT_DB"] = "15"
+os.environ["REDIS_AUTH_DB"] = "14"
 
 
 @pytest.fixture
@@ -53,9 +55,17 @@ async def reset_connection_pools():
     """테스트 간 Redis/Postgres 커넥션 풀 공유를 방지한다."""
     import redis.asyncio as redis
 
-    redis_client = redis.from_url("redis://localhost:6379", db=1)
-    await redis_client.flushdb()
-    await redis_client.aclose()
+    default_db = int(os.environ["REDIS_DEFAULT_DB"])
+    auth_db = int(os.environ["REDIS_AUTH_DB"])
+
+    redis_default_client = redis.from_url(
+        "redis://localhost:6379", db=default_db
+    )
+    redis_auth_client = redis.from_url("redis://localhost:6379", db=auth_db)
+    await redis_default_client.flushdb()
+    await redis_auth_client.flushdb()
+    await redis_default_client.aclose()
+    await redis_auth_client.aclose()
 
     yield
 
