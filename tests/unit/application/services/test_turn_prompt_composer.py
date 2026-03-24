@@ -7,7 +7,7 @@ from app.game.application.services.turn_prompt_composer import (
     TurnPromptComposer,
 )
 from app.game.domain.entities import GameMessageEntity
-from app.game.domain.value_objects import ActionType, GameState, MessageRole
+from app.game.domain.value_objects import GameState, MessageRole
 
 
 class TestTurnPromptComposer:
@@ -51,18 +51,14 @@ class TestTurnPromptComposer:
             ),
             inventory=["철사"],
             player_action="문을 따고 탈출한다",
-            action_type=ActionType.EXPLORATION,
             conversation_history=history,
             recalled_memories=recalled,
-            recent_events_summary="- 간수가 순찰을 돌고 있다.",
-            dice_result_section="🎲 1d20+2 = 15 vs DC 13 → 성공!",
         )
 
         assert "감옥 탈출" in composed.system_prompt
         assert composed.messages[-1]["role"] == "user"
         assert "현재 플레이어 행동" in composed.messages[-1]["content"]
         assert "문을 따고 탈출한다" in composed.messages[-1]["content"]
-        assert "exploration" in composed.messages[-1]["content"]
-        assert "간수가 순찰을 돌고 있다." in composed.messages[-1]["content"]
+        assert "서버 판정" not in composed.messages[-1]["content"]
         assert "문이 잠겨 있다." in composed.messages[-1]["content"]
         assert "녹슨 열쇠 구멍" in composed.system_prompt

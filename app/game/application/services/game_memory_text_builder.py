@@ -27,10 +27,6 @@ class GameMemoryTextBuilder:
 
         sections: list[str] = []
 
-        before_narrative = parsed_response.get("before_narrative")
-        if isinstance(before_narrative, str) and before_narrative.strip():
-            sections.append(before_narrative.strip())
-
         narrative = parsed_response.get("narrative")
         if isinstance(narrative, str) and narrative.strip():
             sections.append(narrative.strip())

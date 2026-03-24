@@ -29,6 +29,7 @@ class TestGameMemoryTextBuilder:
             parsed_response=parsed,
         )
 
+        assert "숨을 죽이고 자물쇠에 철사를 집어넣습니다." not in search_text
         assert "철사가 자물쇠의 걸쇠를 밀어내며 문이 열립니다." in search_text
         assert "감옥 바깥 복도" in search_text
         assert "경비 열쇠" in search_text

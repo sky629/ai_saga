@@ -310,10 +310,6 @@ class ProcessActionUseCase:
         GameSessionEntity, Union[GameActionResponse, GameEndingResponse]
     ]:
         """일반 턴 처리."""
-        recent_events = GameMasterService.summarize_recent_events(
-            [msg.content for msg in conversation_history if msg.is_ai_response]
-        )
-
         # Parse current game state
         game_state = GameState.from_dict(session.game_state)
 
@@ -353,10 +349,8 @@ class ProcessActionUseCase:
             game_state=game_state,
             inventory=character.inventory,
             player_action=player_action,
-            action_type=action_type,
             conversation_history=conversation_history,
             recalled_memories=recalled_memories,
-            recent_events_summary=recent_events,
             dice_result_section=dice_result_section,
         )
 
@@ -398,11 +392,6 @@ class ProcessActionUseCase:
                 and dice_result is not None
                 and not dice_result.is_success
             ):
-                narrative = GameMasterService.normalize_failed_dice_narrative(
-                    narrative=narrative,
-                    player_action=player_action,
-                    is_fumble=dice_result.is_fumble,
-                )
                 state_changes = (
                     GameMasterService.filter_state_changes_on_dice_failure(
                         state_changes
@@ -608,7 +597,7 @@ class ProcessActionUseCase:
             options=options,
             turn_count=session.turn_count,
             max_turns=session.max_turns,
-            is_ending=session.remaining_turns <= 1,
+            is_ending=False,
             image_url=image_url,
             dice_result=dice_result_response,
             before_roll_narrative=before_narrative if parsed else None,

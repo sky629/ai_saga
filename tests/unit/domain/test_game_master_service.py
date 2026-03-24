@@ -247,6 +247,20 @@ class TestGameMasterServiceBeforeNarrative:
 
         assert result == ""
 
+    def test_extract_before_narrative_from_parsed_drops_duplicate_text(self):
+        """before_narrative가 narrative와 같거나 포함되면 제거."""
+        parsed = {
+            "before_narrative": "당신은 주먹을 휘둘러 스크린을 강하게 가격합니다.",
+            "narrative": (
+                "당신은 주먹을 휘둘러 스크린을 강하게 가격합니다. "
+                "그리고 금이 번져 갑니다."
+            ),
+        }
+
+        result = GameMasterService.extract_before_narrative_from_parsed(parsed)
+
+        assert result is None
+
 
 class TestGameMasterServiceDiceFiltering:
     """GameMasterService dice_applied extraction and state_changes filtering tests."""

@@ -221,8 +221,10 @@ class TestGameEndingDetection:
             embedding_service=repos["embedding_service"],
         )
 
-    async def test_second_to_last_turn_has_is_ending_true(self, base_session):
-        """Turn 9 (max=10): is_ending=True 경고 - 다음 턴이 마지막임을 알림."""
+    async def test_second_to_last_turn_keeps_is_ending_false(
+        self, base_session
+    ):
+        """Turn 9 (max=10): 일반 액션 응답에서는 is_ending=False 유지."""
         # Given: turn_count=8, advance_turn() 후 9가 됨 → remaining_turns=1
         session = base_session(turn_count=8, max_turns=10)
         repos = self._make_repos(session)
@@ -237,9 +239,9 @@ class TestGameEndingDetection:
         # When
         result = await use_case.execute(session.user_id, input_data)
 
-        # Then: GameActionResponse이며 is_ending=True
+        # Then: GameActionResponse이며 is_ending=False
         assert isinstance(result.response, GameActionResponse)
-        assert result.response.is_ending is True
+        assert result.response.is_ending is False
         assert result.response.turn_count == 9
         assert result.response.max_turns == 10
 

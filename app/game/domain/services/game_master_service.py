@@ -168,58 +168,6 @@ class GameMasterService:
         return parsed.get("narrative", fallback)
 
     @staticmethod
-    def normalize_failed_dice_narrative(
-        narrative: str,
-        player_action: str,
-        is_fumble: bool = False,
-    ) -> str:
-        """주사위 실패 시 성공 확정처럼 보이는 narrative를 보정."""
-        failure_markers = [
-            "실패",
-            "빗나",
-            "뜻대로 되지",
-            "막혀",
-            "저지",
-            "헛",
-            "불발",
-            "주춤",
-            "휘청",
-            "놓치",
-            "미끄러",
-        ]
-        success_markers = [
-            "성공",
-            "적중",
-            "완료",
-            "해낸",
-            "해냅",
-            "도착",
-            "열립니다",
-            "열어",
-            "움직입니다",
-            "뽑아",
-            "전투 태세",
-            "돌파",
-            "설득해",
-        ]
-
-        if any(marker in narrative for marker in failure_markers) and not any(
-            marker in narrative for marker in success_markers
-        ):
-            return narrative
-
-        cleaned_action = player_action.strip().rstrip(".!?")
-        if is_fumble:
-            return (
-                f"당신은 {cleaned_action} 시도하지만 크게 어긋나며 "
-                "상황이 더 나빠집니다."
-            )
-        return (
-            f"당신은 {cleaned_action} 시도하지만 뜻대로 되지 않아 "
-            "원하는 결과를 얻지 못합니다."
-        )
-
-    @staticmethod
     def extract_options_from_parsed(parsed: dict) -> list[str]:
         """파싱된 JSON에서 옵션 추출.
 
@@ -257,7 +205,44 @@ class GameMasterService:
         Returns:
             before_narrative 텍스트, 필드가 없으면 None
         """
-        return parsed.get("before_narrative", None)
+        before_narrative = parsed.get("before_narrative", None)
+        narrative = parsed.get("narrative")
+
+        if not isinstance(before_narrative, str):
+            return before_narrative
+        if not before_narrative.strip():
+            return before_narrative
+        if not isinstance(narrative, str) or not narrative.strip():
+            return before_narrative
+
+        normalized_before = GameMasterService._normalize_for_comparison(
+            before_narrative
+        )
+        normalized_narrative = GameMasterService._normalize_for_comparison(
+            narrative
+        )
+
+        if not normalized_before or not normalized_narrative:
+            return before_narrative
+
+        if (
+            normalized_before == normalized_narrative
+            or normalized_before in normalized_narrative
+            or normalized_narrative in normalized_before
+        ):
+            return None
+
+        return before_narrative
+
+    @staticmethod
+    def _normalize_for_comparison(text: str) -> str:
+        """서술 중복 비교를 위한 느슨한 정규화."""
+        cleaned = re.sub(r"<br\s*/?>", " ", text, flags=re.IGNORECASE)
+        cleaned = re.sub(
+            r"</?(b|strong|i|em)>", " ", cleaned, flags=re.IGNORECASE
+        )
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        return cleaned.strip()
 
     @staticmethod
     def filter_state_changes_on_dice_failure(

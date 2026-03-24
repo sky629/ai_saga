@@ -460,7 +460,7 @@ class TestDiceIntegration:
         mock_randint.assert_called()
 
     @pytest.mark.asyncio
-    async def test_failed_dice_narrative_is_sanitized_when_llm_claims_success(
+    async def test_failed_dice_narrative_preserves_llm_description(
         self, mock_repositories, active_session, character, scenario
     ):
         mock_repositories["cache_service"].get.return_value = None
@@ -506,8 +506,7 @@ class TestDiceIntegration:
 
         assert result.response.dice_result is not None
         assert result.response.dice_result.is_success is False
-        assert "칼을 뽑아" not in result.response.narrative
-        assert "뜻대로 되지" in result.response.narrative
+        assert "칼을 뽑아 전투 태세를 갖춥니다." in result.response.narrative
 
     @pytest.mark.asyncio
     async def test_persisted_parsed_response_keeps_raw_llm_option_schema(
