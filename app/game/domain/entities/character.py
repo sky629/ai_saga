@@ -27,7 +27,7 @@ class CharacterProfile(BaseModel):
         ]
         if self.goal:
             parts.append(f"목표: {self.goal}.")
-        return " ".join(parts)
+        return "\n".join(f"- {part}" for part in parts)
 
 
 class CharacterStats(BaseModel):

@@ -9,6 +9,7 @@ from app.game.application.use_cases.start_game import (
     StartGameUseCase,
 )
 from app.game.domain.entities import CharacterEntity, ScenarioEntity
+from app.game.domain.entities.character import CharacterProfile
 from app.game.domain.value_objects import MessageRole
 from config.settings import settings
 
@@ -291,6 +292,80 @@ async def test_start_game_stores_parsed_response_when_llm_returns_json(
     assert created_message.parsed_response["narrative"] == "게임 시작 내러티브"
     assert (
         created_message.parsed_response["state_changes"]["location"] == "Start"
+    )
+
+
+@pytest.mark.asyncio
+async def test_start_game_uses_character_driven_opening_prompt(
+    use_case,
+    mock_session_repo,
+    mock_character_repo,
+    mock_scenario_repo,
+    mock_message_repo,
+    mock_llm_service,
+):
+    """시작 프롬프트와 요청 문구가 캐릭터 설정을 강하게 반영해야 함."""
+    user_id = get_uuid7()
+    character_id = get_uuid7()
+    scenario_id = get_uuid7()
+
+    character = CharacterEntity(
+        id=character_id,
+        user_id=user_id,
+        scenario_id=scenario_id,
+        name="실비아",
+        profile=CharacterProfile(
+            age=27,
+            gender="여성",
+            appearance="검은 단발과 오래된 흉터",
+            goal="실종된 형을 찾는 것",
+        ),
+        stats={},
+        inventory=[],
+        is_active=True,
+        created_at=get_utc_datetime(),
+    )
+    mock_character_repo.get_by_id.return_value = character
+
+    scenario = ScenarioEntity(
+        id=scenario_id,
+        name="용사의 여정",
+        description="Desc",
+        world_setting="World",
+        initial_location="하늘빛 마을 - 모험가 길드 앞",
+        genre="fantasy",
+        difficulty="normal",
+        max_turns=30,
+        is_active=True,
+        created_at=get_utc_datetime(),
+        updated_at=get_utc_datetime(),
+    )
+    mock_scenario_repo.get_by_id.return_value = scenario
+    mock_session_repo.get_active_by_character.return_value = None
+    mock_session_repo.save.side_effect = lambda session: session
+
+    mock_llm_response = MagicMock()
+    mock_llm_response.content = "Welcome to the game."
+    mock_llm_response.usage.total_tokens = 10
+    mock_llm_service.generate_response.return_value = mock_llm_response
+
+    await use_case.execute(
+        user_id,
+        StartGameInput(character_id=character_id, scenario_id=scenario_id),
+    )
+
+    generate_kwargs = mock_llm_service.generate_response.call_args.kwargs
+    assert "## 캐릭터 핵심 설정" in generate_kwargs["system_prompt"]
+    assert (
+        "- 외형: 검은 단발과 오래된 흉터" in generate_kwargs["system_prompt"]
+    )
+    assert "- 목표: 실종된 형을 찾는 것" in generate_kwargs["system_prompt"]
+    assert (
+        "첫 선택지 2개 이상은 캐릭터 설정" in generate_kwargs["system_prompt"]
+    )
+    assert (
+        generate_kwargs["messages"][0]["content"]
+        == "게임을 시작합니다. 캐릭터의 목표와 외형이 자연스럽게 드러나도록 현재 상황을 묘사하고, 첫 선택지 3개 중 최소 2개는 캐릭터 설정을 직접 반영해주세요."
     )
 
 

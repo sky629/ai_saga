@@ -79,12 +79,37 @@ class TestBuildSystemPrompt:
             scenario_name="던전 탐험",
             world_setting="판타지 세계",
             character_name="용사",
-            character_description="용감한 전사",
+            character_description=(
+                "- 이름: 용사\n"
+                "- 나이: 19세\n"
+                "- 성별: 비공개\n"
+                "- 외형: 낡은 갑옷과 짧은 금발\n"
+                "- 목표: 잃어버린 동생을 찾는 것"
+            ),
         )
         assert "던전 탐험" in prompt
         assert "판타지 세계" in prompt
         assert "용사" in prompt
-        assert "용감한 전사" in prompt
+        assert "## 캐릭터 핵심 설정" in prompt
+        assert "- 목표: 잃어버린 동생을 찾는 것" in prompt
+
+    def test_build_system_prompt_enforces_character_driven_opening(self):
+        """시작 장면과 첫 선택지에 캐릭터 설정 반영 규칙이 포함되어야 한다."""
+        prompt = build_system_prompt(
+            scenario_name="왕국",
+            world_setting="몰락 직전의 판타지 왕국",
+            character_name="실비아",
+            character_description=(
+                "- 이름: 실비아\n"
+                "- 나이: 27세\n"
+                "- 성별: 여성\n"
+                "- 외형: 검은 단발과 오래된 흉터\n"
+                "- 목표: 실종된 형을 찾는 것"
+            ),
+        )
+        assert "캐릭터 핵심 설정" in prompt
+        assert "첫 장면에서는 캐릭터의 외형, 목표" in prompt
+        assert "첫 선택지 2개 이상은 캐릭터 설정" in prompt
 
     def test_build_system_prompt_with_game_state(self):
         """Test system prompt includes game state section."""
