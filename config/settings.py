@@ -49,15 +49,17 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
 
     # Image Generation
-    image_generation_enabled: bool = False  # Enable/disable image generation
+    image_generation_enabled: bool = False  # false면 더미 이미지 사용
     image_model: str = "imagen-3.0-generate-001"
 
-    # Cloudflare R2
-    r2_access_key_id: str = ""
-    r2_secret_access_key: str = ""
-    r2_endpoint_url: str = ""
-    r2_bucket_name: str = "ai-saga"
-    r2_public_url: str = ""  # 공개 URL (CDN 등)
+    # S3-compatible object storage
+    object_storage_access_key_id: str = ""
+    object_storage_secret_access_key: str = ""
+    object_storage_endpoint_url: str = ""
+    object_storage_region: str = ""
+    object_storage_bucket_name: str = "ai-saga"
+    object_storage_public_url: str = ""
+    object_storage_public_read_acl: bool = False
 
     # Game Settings
     game_min_turns: int = 1

@@ -1,17 +1,18 @@
 """Image Generation Service Adapter.
 
-Imagen 3 API를 사용하여 이미지를 생성하고 Cloudflare R2에 업로드합니다.
+Imagen 3 API를 사용하여 이미지를 생성하고 S3 호환 스토리지에 업로드합니다.
 """
 
 import logging
 from typing import Optional
-from uuid import uuid4
+from urllib.parse import urlparse
 
 import boto3
 from botocore.config import Config
 from google import genai
 from google.genai import types
 
+from app.common.utils.id_generator import get_uuid7
 from app.game.application.ports import ImageGenerationServiceInterface
 from config.settings import settings
 
@@ -21,7 +22,7 @@ logger = logging.getLogger("uvicorn")
 class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
     """이미지 생성 서비스 어댑터.
 
-    Imagen 3 API로 이미지 생성 후 R2에 업로드합니다.
+    Imagen 3 API로 이미지 생성 후 S3 호환 스토리지에 업로드합니다.
     """
 
     def __init__(self):
@@ -29,16 +30,28 @@ class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
         self._genai_client = genai.Client(api_key=settings.gemini_api_key)
         self._image_model = settings.image_model
 
-        # R2 클라이언트 (S3 호환)
-        self._s3_client = boto3.client(
-            "s3",
-            endpoint_url=settings.r2_endpoint_url,
-            aws_access_key_id=settings.r2_access_key_id,
-            aws_secret_access_key=settings.r2_secret_access_key,
-            config=Config(signature_version="s3v4"),
-        )
-        self._bucket = settings.r2_bucket_name
-        self._public_url = settings.r2_public_url
+        client_kwargs = {
+            "service_name": "s3",
+            "config": Config(signature_version="s3v4"),
+        }
+        if settings.object_storage_endpoint_url:
+            client_kwargs["endpoint_url"] = (
+                settings.object_storage_endpoint_url
+            )
+        if settings.object_storage_access_key_id:
+            client_kwargs["aws_access_key_id"] = (
+                settings.object_storage_access_key_id
+            )
+        if settings.object_storage_secret_access_key:
+            client_kwargs["aws_secret_access_key"] = (
+                settings.object_storage_secret_access_key
+            )
+        if settings.object_storage_region:
+            client_kwargs["region_name"] = settings.object_storage_region
+
+        self._s3_client = boto3.client(**client_kwargs)
+        self._bucket = settings.object_storage_bucket_name
+        self._public_url = settings.object_storage_public_url
 
     async def generate_image(
         self,
@@ -48,7 +61,7 @@ class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
     ) -> Optional[str]:
         """이미지 생성 후 R2에 업로드, URL 반환."""
         try:
-            if settings.KANG_ENV.lower() == "local":
+            if not settings.image_generation_enabled:
                 return await self._generate_dummy_image(prompt)
 
             # 1. 이미지 데이터 생성
@@ -59,39 +72,58 @@ class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
                 logger.error("Image generation returned no data")
                 return None
 
-            # 2. R2에 업로드
-            file_name = f"{uuid4()}.png"
-            object_key = f"{session_id}/{user_id}/{file_name}"
+            # 2. Object storage에 업로드
+            file_name = f"{get_uuid7()}.png"
+            object_key = f"{user_id}/{session_id}/{file_name}"
 
-            self._s3_client.put_object(
-                Bucket=self._bucket,
-                Key=object_key,
-                Body=image_data,
-                ContentType="image/png",
-                ACL="public-read",
-            )
+            put_object_kwargs = {
+                "Bucket": self._bucket,
+                "Key": object_key,
+                "Body": image_data,
+                "ContentType": "image/png",
+            }
+            if settings.object_storage_public_read_acl:
+                put_object_kwargs["ACL"] = "public-read"
+
+            self._s3_client.put_object(**put_object_kwargs)
 
             # 3. 공개 URL 반환
             if self._public_url:
                 public_base = self._public_url.rstrip("/")
                 return f"{public_base}/{object_key}"
-            else:
-                # public_url이 없으면 endpoint_url로 대체 시도 (주의: 브라우저 접근 불가할 수 있음)
+
+            fallback_url = self._build_fallback_object_url(object_key)
+            if fallback_url:
                 logger.warning(
-                    f"R2_PUBLIC_URL not set. Falling back to endpoint: {settings.r2_endpoint_url}"
+                    "OBJECT_STORAGE_PUBLIC_URL not set. Falling back to derived object url."
                 )
-                return (
-                    f"{settings.r2_endpoint_url}/{self._bucket}/{object_key}"
-                )
+                return fallback_url
+            logger.warning("공개 이미지 URL을 계산할 수 없습니다.")
+            return None
         except Exception as e:
             # 이미지 생성 실패 시 게임 진행에 방해되지 않도록 None 반환
             logger.error(f"Image generation failed: {e}")
             return None
 
+    async def delete_image(self, image_url: str) -> None:
+        """업로드된 이미지를 삭제한다."""
+        object_key = self._extract_object_key(image_url)
+        if object_key is None:
+            logger.warning(
+                "Skipping image deletion for unmanaged url: %s", image_url
+            )
+            return
+
+        self._s3_client.delete_object(
+            Bucket=self._bucket,
+            Key=object_key,
+        )
+
     async def _generate_dummy_image(self, prompt: str) -> Optional[str]:
         """dummy 이미지 반환.
         TODO: 유료 결제 계정 등록 후 원래의 Imagen 3 로직으로 복구해야 함.
         """
+        del prompt
         return "https://pub-3c25697921ae4f12aac4c4cfdbb57cc4.r2.dev/dummy.png"
 
     async def _generate_google_imagen(self, prompt: str) -> Optional[bytes]:
@@ -130,3 +162,39 @@ class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
         except Exception as e:
             logger.error(f"Google Imagen API failed: {e}")
             return None
+
+    def _extract_object_key(self, image_url: str) -> Optional[str]:
+        """공개 URL에서 object key를 역으로 추출한다."""
+        public_base = self._public_url.rstrip("/")
+        if public_base and image_url.startswith(f"{public_base}/"):
+            return image_url.removeprefix(f"{public_base}/")
+
+        endpoint_base = settings.object_storage_endpoint_url.rstrip("/")
+        endpoint_prefix = f"{endpoint_base}/{self._bucket}/"
+        if endpoint_base and image_url.startswith(endpoint_prefix):
+            return image_url.removeprefix(endpoint_prefix)
+
+        parsed = urlparse(image_url)
+        if not parsed.scheme or not parsed.netloc:
+            return None
+        s3_virtual_host = self._build_s3_virtual_host()
+        if s3_virtual_host and parsed.netloc == s3_virtual_host:
+            return parsed.path.lstrip("/") or None
+        return None
+
+    def _build_fallback_object_url(self, object_key: str) -> Optional[str]:
+        endpoint_base = settings.object_storage_endpoint_url.rstrip("/")
+        if endpoint_base:
+            return f"{endpoint_base}/{self._bucket}/{object_key}"
+
+        s3_virtual_host = self._build_s3_virtual_host()
+        if s3_virtual_host:
+            return f"https://{s3_virtual_host}/{object_key}"
+
+        return None
+
+    def _build_s3_virtual_host(self) -> Optional[str]:
+        region = settings.object_storage_region.strip()
+        if not region:
+            return None
+        return f"{self._bucket}.s3.{region}.amazonaws.com"
