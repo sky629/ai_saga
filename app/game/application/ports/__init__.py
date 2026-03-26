@@ -200,6 +200,11 @@ class CacheServiceInterface(ABC):
         """분산 락 (Redis Lock) 컨텍스트 매니저 반환."""
         pass
 
+    @abstractmethod
+    async def delete(self, key: str) -> None:
+        """캐시 삭제."""
+        pass
+
 
 class ImageGenerationServiceInterface(ABC):
     """이미지 생성 서비스 인터페이스."""
@@ -221,6 +226,11 @@ class ImageGenerationServiceInterface(ABC):
         Returns:
             생성된 이미지의 공개 URL, 실패 시 None
         """
+        pass
+
+    @abstractmethod
+    async def delete_image(self, image_url: str) -> None:
+        """업로드된 이미지를 삭제한다."""
         pass
 
 

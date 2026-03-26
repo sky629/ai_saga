@@ -844,37 +844,6 @@ class ProcessActionUseCase:
             json.dumps(payload, sort_keys=True).encode("utf-8")
         ).hexdigest()
 
-    async def _generate_illustration(
-        self,
-        narrative: str,
-        session: GameSessionEntity,
-    ) -> Optional[str]:
-        """LLM 응답 기반 삽화 생성.
-
-        Args:
-            narrative: LLM 응답 내용
-            session: 게임 세션 (session_id, character_id 사용)
-
-        Returns:
-            생성된 이미지 URL, 실패 시 None
-        """
-        if not self._image_service:
-            return None
-
-        # 픽셀 아트 스타일 프롬프트 (Pixel Art, Retro Game Style)
-        illustration_prompt = (
-            f"Pixel art style game illustration: {narrative[:300]}. "
-            "Retro 16-bit rpg game aesthetic, detailed pixel art, vibrant colors."
-        )
-
-        return await self._image_service.generate_image(
-            prompt=illustration_prompt,
-            session_id=str(session.id),
-            user_id=str(
-                session.character_id
-            ),  # character_id를 user_id 대신 사용
-        )
-
     @staticmethod
     def _resolve_action_type(
         action: str, action_type_hint: Optional[str] = None

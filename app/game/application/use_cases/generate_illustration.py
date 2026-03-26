@@ -1,16 +1,22 @@
 """GenerateIllustrationUseCase — 메시지 내러티브 기반 온디맨드 일러스트 생성."""
 
+import logging
 from uuid import UUID
 
 from pydantic import BaseModel
 
 from app.common.exception import BadRequest, Forbidden, NotFound, ServerError
 from app.game.application.ports import (
+    CacheServiceInterface,
+    CharacterRepositoryInterface,
     GameMessageRepositoryInterface,
     GameSessionRepositoryInterface,
     ImageGenerationServiceInterface,
+    ScenarioRepositoryInterface,
 )
-from config.settings import settings
+from app.game.application.services import IllustrationGenerationService
+
+logger = logging.getLogger(__name__)
 
 
 class GenerateIllustrationInput(BaseModel):
@@ -41,23 +47,45 @@ class GenerateIllustrationUseCase:
         self,
         session_repository: GameSessionRepositoryInterface,
         message_repository: GameMessageRepositoryInterface,
+        character_repository: CharacterRepositoryInterface,
+        scenario_repository: ScenarioRepositoryInterface,
+        cache_service: CacheServiceInterface,
         image_service: ImageGenerationServiceInterface,
     ):
         self._session_repo = session_repository
         self._message_repo = message_repository
+        self._character_repo = character_repository
+        self._scenario_repo = scenario_repository
+        self._cache_service = cache_service
         self._image_service = image_service
+
+    async def _cleanup_generated_image(
+        self, image_url: str, cache_key: str
+    ) -> None:
+        """업로드된 이미지와 결과 캐시를 정리한다."""
+        try:
+            await self._image_service.delete_image(image_url)
+        except Exception as exc:
+            logger.warning(
+                "Failed to delete orphan illustration %s: %s",
+                image_url,
+                exc,
+            )
+
+        try:
+            await self._cache_service.delete(cache_key)
+        except Exception as exc:
+            logger.warning(
+                "Failed to delete illustration cache %s: %s",
+                cache_key,
+                exc,
+            )
 
     async def execute(
         self,
         user_id: UUID,
         input_data: GenerateIllustrationInput,
     ) -> GenerateIllustrationResult:
-        # 0. 기능 활성화 여부 확인 (설정값 기반)
-        if not settings.image_generation_enabled:
-            raise BadRequest(
-                message="현재 일러스트 생성 기능이 비활성화되어 있습니다."
-            )
-
         session = await self._session_repo.get_by_id(input_data.session_id)
         if session is None:
             raise NotFound(message="세션을 찾을 수 없습니다.")
@@ -85,21 +113,38 @@ class GenerateIllustrationUseCase:
                 image_url=message.image_url,
             )
 
-        narrative_snippet = " ".join(message.content.split())[:280]
-        if not narrative_snippet:
-            narrative_snippet = "mysterious fantasy RPG adventure scene"
+        cache_key = f"game:illustration:result:{message.id}"
+        cached_image_url = await self._cache_service.get(cache_key)
+        if cached_image_url:
+            await self._message_repo.update_image_url(
+                message.id, cached_image_url
+            )
+            return GenerateIllustrationResult(
+                message_id=message.id,
+                image_url=cached_image_url,
+            )
 
-        illustration_prompt = (
-            "Pixel art fantasy RPG scene based on this narrative: "
-            f"{narrative_snippet}. "
-            "Retro 16-bit game aesthetic, detailed pixel art, vibrant colors, "
-            "adventure atmosphere."
+        character = await self._character_repo.get_by_id(session.character_id)
+        if character is None:
+            raise NotFound(message="캐릭터를 찾을 수 없습니다.")
+        scenario = await self._scenario_repo.get_by_id(session.scenario_id)
+        if scenario is None:
+            raise NotFound(message="시나리오를 찾을 수 없습니다.")
+
+        scene_narrative = IllustrationGenerationService.build_scene_narrative(
+            raw_content=message.content,
+            parsed_response=message.parsed_response,
         )
 
-        image_url = await self._image_service.generate_image(
-            prompt=illustration_prompt,
+        image_url = await IllustrationGenerationService.generate(
+            image_service=self._image_service,
+            narrative=scene_narrative,
             session_id=str(session.id),
             user_id=str(session.user_id),
+            character_name=character.name,
+            character_description=character.prompt_profile,
+            current_location=session.current_location,
+            scenario_genre=scenario.genre,
         )
 
         if image_url is None:
@@ -107,7 +152,24 @@ class GenerateIllustrationUseCase:
                 message="일러스트 생성에 실패했습니다. 잠시 후 다시 시도해 주세요."
             )
 
-        await self._message_repo.update_image_url(message.id, image_url)
+        try:
+            await self._cache_service.set(
+                cache_key,
+                image_url,
+                ttl_seconds=86400,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to cache illustration result for message %s: %s",
+                message.id,
+                exc,
+            )
+
+        try:
+            await self._message_repo.update_image_url(message.id, image_url)
+        except Exception:
+            await self._cleanup_generated_image(image_url, cache_key)
+            raise
 
         return GenerateIllustrationResult(
             message_id=message.id,

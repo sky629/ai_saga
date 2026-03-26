@@ -370,7 +370,7 @@ async def test_start_game_uses_character_driven_opening_prompt(
 
 
 @pytest.mark.asyncio
-async def test_start_game_skips_auto_illustration_when_feature_disabled(
+async def test_start_game_uses_dummy_illustration_when_feature_disabled(
     mock_session_repo,
     mock_character_repo,
     mock_scenario_repo,
@@ -424,6 +424,9 @@ async def test_start_game_skips_auto_illustration_when_feature_disabled(
     mock_llm_response.content = "Welcome to the game."
     mock_llm_response.usage.total_tokens = 10
     mock_llm_service.generate_response.return_value = mock_llm_response
+    image_service.generate_image.return_value = (
+        "https://example.com/dummy-image.png"
+    )
 
     original_flag = settings.image_generation_enabled
     settings.image_generation_enabled = False
@@ -435,5 +438,157 @@ async def test_start_game_skips_auto_illustration_when_feature_disabled(
     finally:
         settings.image_generation_enabled = original_flag
 
-    assert result.image_url is None
-    image_service.generate_image.assert_not_called()
+    assert result.image_url == "https://example.com/dummy-image.png"
+    image_service.generate_image.assert_called_once()
+    called_prompt = image_service.generate_image.call_args.kwargs["prompt"]
+    assert "Scene: Welcome to the game." in called_prompt
+    assert "The protagonist is Hero" in called_prompt
+    assert "The scene takes place at Start." in called_prompt
+    assert "fantasy setting" in called_prompt
+    assert "Retro 16-bit pixel art" in called_prompt
+    assert (
+        "No text, no speech bubbles, no captions, no UI, no HUD"
+        in called_prompt
+    )
+
+
+@pytest.mark.asyncio
+async def test_start_game_cleans_up_uploaded_image_when_message_save_fails(
+    mock_session_repo,
+    mock_character_repo,
+    mock_scenario_repo,
+    mock_message_repo,
+    mock_llm_service,
+):
+    user_id = get_uuid7()
+    character_id = get_uuid7()
+    scenario_id = get_uuid7()
+    image_service = AsyncMock()
+
+    use_case = StartGameUseCase(
+        session_repository=mock_session_repo,
+        character_repository=mock_character_repo,
+        scenario_repository=mock_scenario_repo,
+        message_repository=mock_message_repo,
+        llm_service=mock_llm_service,
+        image_service=image_service,
+    )
+
+    character = CharacterEntity(
+        id=character_id,
+        user_id=user_id,
+        scenario_id=scenario_id,
+        name="Hero",
+        description="Desc",
+        stats={},
+        inventory=[],
+        is_active=True,
+        created_at=get_utc_datetime(),
+    )
+    scenario = ScenarioEntity(
+        id=scenario_id,
+        name="Scenario",
+        description="Desc",
+        world_setting="World",
+        initial_location="Start",
+        genre="fantasy",
+        difficulty="normal",
+        max_turns=30,
+        is_active=True,
+        created_at=get_utc_datetime(),
+        updated_at=get_utc_datetime(),
+    )
+    mock_character_repo.get_by_id.return_value = character
+    mock_scenario_repo.get_by_id.return_value = scenario
+    mock_session_repo.get_active_by_character.return_value = None
+    mock_session_repo.save.side_effect = lambda session: session
+
+    mock_llm_response = MagicMock()
+    mock_llm_response.content = "Welcome to the game."
+    mock_llm_response.usage.total_tokens = 10
+    mock_llm_service.generate_response.return_value = mock_llm_response
+    image_service.generate_image.return_value = (
+        "https://example.com/generated-image.png"
+    )
+    mock_message_repo.create.side_effect = Exception("message save failed")
+
+    with pytest.raises(Exception, match="message save failed"):
+        await use_case.execute(
+            user_id,
+            StartGameInput(character_id=character_id, scenario_id=scenario_id),
+        )
+
+    image_service.delete_image.assert_called_once_with(
+        "https://example.com/generated-image.png"
+    )
+
+
+@pytest.mark.asyncio
+async def test_start_game_cleans_up_uploaded_image_when_commit_fails(
+    mock_session_repo,
+    mock_character_repo,
+    mock_scenario_repo,
+    mock_message_repo,
+    mock_llm_service,
+):
+    user_id = get_uuid7()
+    character_id = get_uuid7()
+    scenario_id = get_uuid7()
+    image_service = AsyncMock()
+
+    use_case = StartGameUseCase(
+        session_repository=mock_session_repo,
+        character_repository=mock_character_repo,
+        scenario_repository=mock_scenario_repo,
+        message_repository=mock_message_repo,
+        llm_service=mock_llm_service,
+        image_service=image_service,
+    )
+
+    character = CharacterEntity(
+        id=character_id,
+        user_id=user_id,
+        scenario_id=scenario_id,
+        name="Hero",
+        description="Desc",
+        stats={},
+        inventory=[],
+        is_active=True,
+        created_at=get_utc_datetime(),
+    )
+    scenario = ScenarioEntity(
+        id=scenario_id,
+        name="Scenario",
+        description="Desc",
+        world_setting="World",
+        initial_location="Start",
+        genre="fantasy",
+        difficulty="normal",
+        max_turns=30,
+        is_active=True,
+        created_at=get_utc_datetime(),
+        updated_at=get_utc_datetime(),
+    )
+    mock_character_repo.get_by_id.return_value = character
+    mock_scenario_repo.get_by_id.return_value = scenario
+    mock_session_repo.get_active_by_character.return_value = None
+    mock_session_repo.save.side_effect = lambda session: session
+    mock_session_repo.commit.side_effect = Exception("commit failed")
+
+    mock_llm_response = MagicMock()
+    mock_llm_response.content = "Welcome to the game."
+    mock_llm_response.usage.total_tokens = 10
+    mock_llm_service.generate_response.return_value = mock_llm_response
+    image_service.generate_image.return_value = (
+        "https://example.com/generated-image.png"
+    )
+
+    with pytest.raises(Exception, match="commit failed"):
+        await use_case.execute(
+            user_id,
+            StartGameInput(character_id=character_id, scenario_id=scenario_id),
+        )
+
+    image_service.delete_image.assert_called_once_with(
+        "https://example.com/generated-image.png"
+    )

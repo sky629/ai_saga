@@ -6,6 +6,12 @@ from app.game.application.services.embedding_cache_service import (
 from app.game.application.services.game_memory_text_builder import (
     GameMemoryTextBuilder,
 )
+from app.game.application.services.illustration_generation_service import (
+    IllustrationGenerationService,
+)
+from app.game.application.services.illustration_prompt_builder import (
+    IllustrationPromptBuilder,
+)
 from app.game.application.services.rag_context_builder import RAGContextBuilder
 from app.game.application.services.turn_prompt_composer import (
     TurnPrompt,
@@ -15,6 +21,8 @@ from app.game.application.services.turn_prompt_composer import (
 __all__ = [
     "EmbeddingCacheService",
     "GameMemoryTextBuilder",
+    "IllustrationGenerationService",
+    "IllustrationPromptBuilder",
     "RAGContextBuilder",
     "TurnPrompt",
     "TurnPromptComposer",

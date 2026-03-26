@@ -9,16 +9,25 @@ import pytest
 from app.common.utils.datetime import get_utc_datetime
 from app.common.utils.id_generator import get_uuid7
 from app.game.application.ports import (
+    CacheServiceInterface,
     GameMessageRepositoryInterface,
     GameSessionRepositoryInterface,
     ImageGenerationServiceInterface,
+    ScenarioRepositoryInterface,
 )
 from app.game.application.use_cases.generate_illustration import (
     GenerateIllustrationInput,
     GenerateIllustrationUseCase,
 )
-from app.game.domain.entities import GameMessageEntity, GameSessionEntity
+from app.game.domain.entities import (
+    CharacterEntity,
+    GameMessageEntity,
+    GameSessionEntity,
+    ScenarioEntity,
+)
+from app.game.domain.entities.character import CharacterProfile
 from app.game.domain.value_objects import MessageRole, SessionStatus
+from config.settings import settings
 
 
 def _make_session(session_id: UUID, user_id: UUID) -> GameSessionEntity:
@@ -66,16 +75,37 @@ class TestGenerateIllustrationUseCase:
         return AsyncMock(spec=GameMessageRepositoryInterface)
 
     @pytest.fixture
+    def mock_character_repo(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_scenario_repo(self):
+        return AsyncMock(spec=ScenarioRepositoryInterface)
+
+    @pytest.fixture
+    def mock_cache_service(self):
+        return AsyncMock(spec=CacheServiceInterface)
+
+    @pytest.fixture
     def mock_image_service(self):
         return AsyncMock(spec=ImageGenerationServiceInterface)
 
     @pytest.fixture
     def use_case(
-        self, mock_session_repo, mock_message_repo, mock_image_service
+        self,
+        mock_session_repo,
+        mock_message_repo,
+        mock_character_repo,
+        mock_scenario_repo,
+        mock_cache_service,
+        mock_image_service,
     ):
         return GenerateIllustrationUseCase(
             session_repository=mock_session_repo,
             message_repository=mock_message_repo,
+            character_repository=mock_character_repo,
+            scenario_repository=mock_scenario_repo,
+            cache_service=mock_cache_service,
             image_service=mock_image_service,
         )
 
@@ -85,6 +115,9 @@ class TestGenerateIllustrationUseCase:
         use_case,
         mock_session_repo,
         mock_message_repo,
+        mock_character_repo,
+        mock_scenario_repo,
+        mock_cache_service,
         mock_image_service,
     ):
         """정상 케이스: 메시지 조회 → 이미지 생성 → 메시지 저장 → URL 반환."""
@@ -95,9 +128,41 @@ class TestGenerateIllustrationUseCase:
 
         session = _make_session(session_id, user_id)
         message = _make_ai_message(message_id, session_id)
+        character = CharacterEntity(
+            id=session.character_id,
+            user_id=user_id,
+            scenario_id=get_uuid7(),
+            name="실비아",
+            profile=CharacterProfile(
+                age=27,
+                gender="여성",
+                appearance="검은 단발과 오래된 흉터",
+                goal="실종된 형을 찾는 것",
+            ),
+            stats={},
+            inventory=[],
+            is_active=True,
+            created_at=get_utc_datetime(),
+        )
+        scenario = ScenarioEntity(
+            id=session.scenario_id,
+            name="감옥 탈출",
+            description="탈출 시나리오",
+            world_setting="지하 감옥과 오래된 왕국",
+            initial_location="숲 속",
+            genre="fantasy",
+            difficulty="normal",
+            max_turns=30,
+            is_active=True,
+            created_at=get_utc_datetime(),
+            updated_at=get_utc_datetime(),
+        )
 
         mock_session_repo.get_by_id.return_value = session
         mock_message_repo.get_by_id.return_value = message
+        mock_character_repo.get_by_id.return_value = character
+        mock_scenario_repo.get_by_id.return_value = scenario
+        mock_cache_service.get.return_value = None
         mock_image_service.generate_image.return_value = expected_url
         mock_message_repo.update_image_url.return_value = message.model_copy(
             update={"image_url": expected_url}
@@ -116,8 +181,62 @@ class TestGenerateIllustrationUseCase:
             "prompt"
         ]
         assert "고블린이 당신을 향해 달려옵니다." in called_prompt
+        assert "Scene:" in called_prompt
+        assert "The protagonist is 실비아" in called_prompt
+        assert "이름: 실비아." in called_prompt
+        assert "The scene takes place at 숲 속." in called_prompt
+        assert "fantasy setting" in called_prompt
+        assert (
+            "No text, no speech bubbles, no captions, no UI, no HUD"
+            in called_prompt
+        )
+        mock_cache_service.set.assert_called_once_with(
+            f"game:illustration:result:{message_id}",
+            expected_url,
+            ttl_seconds=86400,
+        )
         mock_message_repo.update_image_url.assert_called_once_with(
             message_id, expected_url
+        )
+
+    @pytest.mark.asyncio
+    async def test_uses_cached_result_without_generating_again(
+        self,
+        use_case,
+        mock_session_repo,
+        mock_message_repo,
+        mock_character_repo,
+        mock_scenario_repo,
+        mock_cache_service,
+        mock_image_service,
+    ):
+        """캐시된 이미지 URL이 있으면 LLM 재호출 없이 재사용한다."""
+        user_id = get_uuid7()
+        session_id = get_uuid7()
+        message_id = get_uuid7()
+        cached_url = "https://r2.example.com/images/cached.png"
+
+        session = _make_session(session_id, user_id)
+        message = _make_ai_message(message_id, session_id)
+
+        mock_session_repo.get_by_id.return_value = session
+        mock_message_repo.get_by_id.return_value = message
+        mock_cache_service.get.return_value = cached_url
+
+        result = await use_case.execute(
+            user_id,
+            GenerateIllustrationInput(
+                session_id=session_id,
+                message_id=message_id,
+            ),
+        )
+
+        assert result.image_url == cached_url
+        mock_image_service.generate_image.assert_not_called()
+        mock_character_repo.get_by_id.assert_not_called()
+        mock_scenario_repo.get_by_id.assert_not_called()
+        mock_message_repo.update_image_url.assert_called_once_with(
+            message_id, cached_url
         )
 
     @pytest.mark.asyncio
@@ -291,6 +410,9 @@ class TestGenerateIllustrationUseCase:
         use_case,
         mock_session_repo,
         mock_message_repo,
+        mock_character_repo,
+        mock_scenario_repo,
+        mock_cache_service,
         mock_image_service,
     ):
         """이미지 생성 실패 시 ServerError 예외."""
@@ -302,9 +424,41 @@ class TestGenerateIllustrationUseCase:
 
         session = _make_session(session_id, user_id)
         message = _make_ai_message(message_id, session_id)
+        character = CharacterEntity(
+            id=session.character_id,
+            user_id=user_id,
+            scenario_id=get_uuid7(),
+            name="실비아",
+            profile=CharacterProfile(
+                age=27,
+                gender="여성",
+                appearance="검은 단발과 오래된 흉터",
+                goal="실종된 형을 찾는 것",
+            ),
+            stats={},
+            inventory=[],
+            is_active=True,
+            created_at=get_utc_datetime(),
+        )
+        scenario = ScenarioEntity(
+            id=session.scenario_id,
+            name="감옥 탈출",
+            description="탈출 시나리오",
+            world_setting="지하 감옥과 오래된 왕국",
+            initial_location="숲 속",
+            genre="fantasy",
+            difficulty="normal",
+            max_turns=30,
+            is_active=True,
+            created_at=get_utc_datetime(),
+            updated_at=get_utc_datetime(),
+        )
 
         mock_session_repo.get_by_id.return_value = session
         mock_message_repo.get_by_id.return_value = message
+        mock_character_repo.get_by_id.return_value = character
+        mock_scenario_repo.get_by_id.return_value = scenario
+        mock_cache_service.get.return_value = None
         mock_image_service.generate_image.return_value = (
             None  # 실패 시 None 반환
         )
@@ -315,3 +469,146 @@ class TestGenerateIllustrationUseCase:
         )
         with pytest.raises(ServerError):
             await use_case.execute(user_id, input_data)
+
+    @pytest.mark.asyncio
+    async def test_uses_dummy_image_when_feature_disabled(
+        self,
+        use_case,
+        mock_session_repo,
+        mock_message_repo,
+        mock_character_repo,
+        mock_scenario_repo,
+        mock_cache_service,
+        mock_image_service,
+        monkeypatch,
+    ):
+        """비활성화 상태에서는 더미 이미지 경로로 처리한다."""
+        user_id = get_uuid7()
+        session_id = get_uuid7()
+        message_id = get_uuid7()
+        expected_url = "https://example.com/dummy-image.png"
+
+        session = _make_session(session_id, user_id)
+        message = _make_ai_message(message_id, session_id)
+        character = CharacterEntity(
+            id=session.character_id,
+            user_id=user_id,
+            scenario_id=get_uuid7(),
+            name="실비아",
+            profile=CharacterProfile(
+                age=27,
+                gender="여성",
+                appearance="검은 단발과 오래된 흉터",
+                goal="실종된 형을 찾는 것",
+            ),
+            stats={},
+            inventory=[],
+            is_active=True,
+            created_at=get_utc_datetime(),
+        )
+        scenario = ScenarioEntity(
+            id=session.scenario_id,
+            name="감옥 탈출",
+            description="탈출 시나리오",
+            world_setting="지하 감옥과 오래된 왕국",
+            initial_location="숲 속",
+            genre="fantasy",
+            difficulty="normal",
+            max_turns=30,
+            is_active=True,
+            created_at=get_utc_datetime(),
+            updated_at=get_utc_datetime(),
+        )
+
+        mock_session_repo.get_by_id.return_value = session
+        mock_message_repo.get_by_id.return_value = message
+        mock_character_repo.get_by_id.return_value = character
+        mock_scenario_repo.get_by_id.return_value = scenario
+        mock_cache_service.get.return_value = None
+        mock_image_service.generate_image.return_value = expected_url
+        monkeypatch.setattr(settings, "image_generation_enabled", False)
+
+        result = await use_case.execute(
+            user_id,
+            GenerateIllustrationInput(
+                session_id=session_id,
+                message_id=message_id,
+            ),
+        )
+
+        assert result.image_url == expected_url
+        mock_image_service.generate_image.assert_called_once()
+        mock_message_repo.update_image_url.assert_called_once_with(
+            message_id, expected_url
+        )
+
+    @pytest.mark.asyncio
+    async def test_cleans_up_uploaded_image_when_db_update_fails(
+        self,
+        use_case,
+        mock_session_repo,
+        mock_message_repo,
+        mock_character_repo,
+        mock_scenario_repo,
+        mock_cache_service,
+        mock_image_service,
+    ):
+        """DB 반영 실패 시 업로드 이미지와 캐시를 정리한다."""
+        user_id = get_uuid7()
+        session_id = get_uuid7()
+        message_id = get_uuid7()
+        generated_url = "https://r2.example.com/images/test.png"
+
+        session = _make_session(session_id, user_id)
+        message = _make_ai_message(message_id, session_id)
+        character = CharacterEntity(
+            id=session.character_id,
+            user_id=user_id,
+            scenario_id=get_uuid7(),
+            name="실비아",
+            profile=CharacterProfile(
+                age=27,
+                gender="여성",
+                appearance="검은 단발과 오래된 흉터",
+                goal="실종된 형을 찾는 것",
+            ),
+            stats={},
+            inventory=[],
+            is_active=True,
+            created_at=get_utc_datetime(),
+        )
+        scenario = ScenarioEntity(
+            id=session.scenario_id,
+            name="감옥 탈출",
+            description="탈출 시나리오",
+            world_setting="지하 감옥과 오래된 왕국",
+            initial_location="숲 속",
+            genre="fantasy",
+            difficulty="normal",
+            max_turns=30,
+            is_active=True,
+            created_at=get_utc_datetime(),
+            updated_at=get_utc_datetime(),
+        )
+
+        mock_session_repo.get_by_id.return_value = session
+        mock_message_repo.get_by_id.return_value = message
+        mock_character_repo.get_by_id.return_value = character
+        mock_scenario_repo.get_by_id.return_value = scenario
+        mock_cache_service.get.return_value = None
+        mock_image_service.generate_image.return_value = generated_url
+        mock_message_repo.update_image_url.side_effect = Exception("db failed")
+
+        with pytest.raises(Exception, match="db failed"):
+            await use_case.execute(
+                user_id,
+                GenerateIllustrationInput(
+                    session_id=session_id,
+                    message_id=message_id,
+                ),
+            )
+
+        mock_image_service.delete_image.assert_called_once_with(generated_url)
+        mock_cache_service.delete.assert_called_once_with(
+            f"game:illustration:result:{message_id}"
+        )

@@ -19,6 +19,7 @@ from app.game.application.ports import (
     LLMServiceInterface,
     ScenarioRepositoryInterface,
 )
+from app.game.application.services import IllustrationGenerationService
 from app.game.domain.entities import GameMessageEntity, GameSessionEntity
 from app.game.domain.services import GameMasterService
 from app.game.domain.value_objects import MessageRole, SessionStatus
@@ -59,6 +60,23 @@ class StartGameUseCase:
         self._message_repo = message_repository
         self._llm = llm_service
         self._image_service = image_service
+
+    async def _cleanup_generated_image(self, image_url: Optional[str]) -> None:
+        """DB 반영 실패 시 업로드된 이미지를 정리한다."""
+        if not image_url or not self._image_service:
+            return
+
+        try:
+            await self._image_service.delete_image(image_url)
+        except Exception:
+            # 고아 파일 방지가 목적이므로 cleanup 실패는 로깅만 남긴다.
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "Failed to delete orphan start-game image: %s",
+                image_url,
+            )
 
     async def execute(
         self, user_id: UUID, input_data: StartGameInput
@@ -111,12 +129,17 @@ class StartGameUseCase:
         session = await self._session_repo.save(session)
 
         # 7. Generate initial narrative
-        initial_image_url = await self._generate_initial_narrative(
-            session, character, scenario
-        )
+        initial_image_url = None
+        try:
+            initial_image_url = await self._generate_initial_narrative(
+                session, character, scenario
+            )
 
-        # 8. Commit persisted session/message writes before returning
-        await self._session_repo.commit()
+            # 8. Commit persisted session/message writes before returning
+            await self._session_repo.commit()
+        except Exception:
+            await self._cleanup_generated_image(initial_image_url)
+            raise
 
         # 9. Return response
         return GameSessionResponse(
@@ -168,16 +191,22 @@ class StartGameUseCase:
         # Save initial message
         initial_image_url = None
         # Generate initial illustration
-        if self._image_service and settings.image_generation_enabled:
-            # 픽셀 아트 스타일 프롬프트 (Pixel Art, Retro Game Style)
-            illustration_prompt = (
-                f"Pixel art style game illustration: {response.content[:300]}. "
-                "Retro 16-bit rpg game aesthetic, detailed pixel art, vibrant colors."
+        if self._image_service:
+            scene_narrative = (
+                IllustrationGenerationService.build_scene_narrative(
+                    raw_content=response.content,
+                    parsed_response=parsed,
+                )
             )
-            initial_image_url = await self._image_service.generate_image(
-                prompt=illustration_prompt,
+            initial_image_url = await IllustrationGenerationService.generate(
+                image_service=self._image_service,
+                narrative=scene_narrative,
                 session_id=str(session.id),
-                user_id=str(character.id),  # character_id를 user_id 대신 사용
+                user_id=str(session.user_id),
+                character_name=character.name,
+                character_description=character.prompt_profile,
+                current_location=session.current_location,
+                scenario_genre=scenario.genre,
             )
 
         # Save initial message with image_url
@@ -193,6 +222,10 @@ class StartGameUseCase:
             image_url=initial_image_url,
             created_at=get_utc_datetime(),
         )
-        await self._message_repo.create(initial_message)
+        try:
+            await self._message_repo.create(initial_message)
+        except Exception:
+            await self._cleanup_generated_image(initial_image_url)
+            raise
 
         return initial_image_url

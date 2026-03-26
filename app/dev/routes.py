@@ -10,6 +10,9 @@ from app.auth.infrastructure.persistence.models.user_models import User
 from app.common.storage.postgres import postgres_storage
 from app.common.utils.id_generator import get_uuid7
 from app.game.domain.value_objects import ScenarioDifficulty, ScenarioGenre
+from app.game.infrastructure.adapters.image_service import (
+    ImageGenerationServiceAdapter,
+)
 from app.game.infrastructure.persistence.models.game_models import Scenario
 from config.settings import settings
 
@@ -118,6 +121,23 @@ class SeedScenariosResponse(BaseModel):
 
     message: str
     scenarios_created: int
+
+
+class DevGenerateImageRequest(BaseModel):
+    """개발용 이미지 생성 요청."""
+
+    prompt: str
+    session_id: str | None = None
+    user_id: str | None = None
+
+
+class DevGenerateImageResponse(BaseModel):
+    """개발용 이미지 생성 응답."""
+
+    image_url: str
+    prompt: str
+    session_id: str
+    user_id: str
 
 
 @dev_router.post("/seed-scenarios/", response_model=SeedScenariosResponse)
@@ -236,4 +256,42 @@ AI와 인간의 경계는 이미 흐려졌고, 도시 전체가 거대한 감시
     return SeedScenariosResponse(
         message="Test scenarios created successfully",
         scenarios_created=len(scenarios),
+    )
+
+
+@dev_router.post(
+    "/generate-image/",
+    response_model=DevGenerateImageResponse,
+)
+async def generate_dev_image(
+    request: DevGenerateImageRequest,
+):
+    """개발용 커스텀 프롬프트 이미지 생성."""
+    if settings.is_prod():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This endpoint is disabled in production",
+        )
+
+    session_id = request.session_id or str(get_uuid7())
+    user_id = request.user_id or str(get_uuid7())
+
+    image_service = ImageGenerationServiceAdapter()
+    image_url = await image_service.generate_image(
+        prompt=request.prompt,
+        session_id=session_id,
+        user_id=user_id,
+    )
+
+    if image_url is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Image generation failed",
+        )
+
+    return DevGenerateImageResponse(
+        image_url=image_url,
+        prompt=request.prompt,
+        session_id=session_id,
+        user_id=user_id,
     )
