@@ -24,10 +24,10 @@ def app():
     Skip this fixture for unit tests that don't need the full app.
     """
     # Lazy import to avoid loading settings at module level
-    from app.common.logging import CONSOLE_LOGGING_CONFIG
+    from app.common.logging import get_console_logging_config
     from app.main import create_app
 
-    return create_app(CONSOLE_LOGGING_CONFIG)
+    return create_app(get_console_logging_config(is_prod=False))
 
 
 @pytest.fixture

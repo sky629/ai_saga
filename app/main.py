@@ -12,8 +12,8 @@ from app import __version__
 from app.auth.presentation.routes.auth_routes import auth_public_router_v1
 from app.common.exception import APIException
 from app.common.logging import (
-    CONSOLE_LOGGING_CONFIG,
-    UVICORN_LOGGING_CONFIG,
+    get_console_logging_config,
+    get_uvicorn_logging_config,
     logger,
 )
 from app.common.middleware.access_log import access_log_middleware
@@ -300,7 +300,7 @@ def create_app(logging_configuration: dict):
     return _app
 
 
-app = create_app(CONSOLE_LOGGING_CONFIG)
+app = create_app(get_console_logging_config(settings.is_prod()))
 
 if __name__ == "__main__":
     import uvicorn
@@ -309,7 +309,7 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=8000,
-        log_config=UVICORN_LOGGING_CONFIG,
+        log_config=get_uvicorn_logging_config(settings.is_prod()),
         use_colors=True,
         reload=False,
     )
