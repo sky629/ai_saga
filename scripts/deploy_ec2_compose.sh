@@ -56,6 +56,7 @@ docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" config \
   >/tmp/ai_saga_compose_config
 
 echo "[2/3] 서비스 빌드 및 기동"
+docker compose -f "${COMPOSE_FILE}" down
 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d --build
 
 echo "[3/3] 상태 확인"
