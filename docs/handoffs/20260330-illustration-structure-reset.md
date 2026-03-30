@@ -1,4 +1,4 @@
-# Common Handoff Template
+# 이미지 생성 구조 리셋 및 dead schema 제거
 
 ## 1. Metadata
 
@@ -53,3 +53,4 @@
 
 - repo 기준으로 dead DB 항목은 `system_prompt_override`만 확인됨
 - migration은 초기 리셋 기준으로 직접 수정했으므로 DB 재생성 전제
+- handoff 폴더는 최신 문서만 유지하도록 정리됨
