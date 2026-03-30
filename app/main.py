@@ -61,7 +61,6 @@ _SENTRY_INITIALIZED = False
 
 
 @router.get("/api/ping/")
-@limiter.exempt
 async def pong():
     return {"ping": "pong!"}
 
@@ -274,7 +273,7 @@ def create_app(logging_configuration: dict):
     _app.include_router(game_router_v1)
 
     # Dev routes (disabled in production)
-    if not settings.is_prod() or True:
+    if not settings.is_prod():
         _app.include_router(dev_router)
 
     # Startup and shutdown events
