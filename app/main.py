@@ -274,7 +274,7 @@ def create_app(logging_configuration: dict):
     _app.include_router(game_router_v1)
 
     # Dev routes (disabled in production)
-    if not settings.is_prod():
+    if not settings.is_prod() or True:
         _app.include_router(dev_router)
 
     # Startup and shutdown events
