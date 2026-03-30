@@ -13,10 +13,17 @@ def get_limiter_key(request):
     return get_remote_address(request)
 
 
+def get_default_rate_limits() -> list[str]:
+    """Get default rate limits for the current environment."""
+    if settings.is_prod():
+        return ["60/minute"]
+    return ["60/minute"]
+
+
 # Create limiter instance
 limiter = Limiter(
     key_func=get_limiter_key,
-    default_limits=["60/minute"] if not settings.is_prod() else ["1/minute"],
+    default_limits=get_default_rate_limits(),
     storage_uri=settings.redis_url,
     in_memory_fallback_enabled=True,
 )

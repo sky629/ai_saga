@@ -61,6 +61,7 @@ _SENTRY_INITIALIZED = False
 
 
 @router.get("/api/ping/")
+@limiter.exempt
 async def pong():
     return {"ping": "pong!"}
 
