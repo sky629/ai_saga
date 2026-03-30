@@ -16,6 +16,8 @@ from app.game.domain.entities.game_session import (
 )
 from app.game.infrastructure.persistence.models.game_models import (
     Character,
+    GameMemoryDocument,
+    GameMessage,
     GameSession,
     Scenario,
 )
@@ -52,8 +54,9 @@ async def test_save_new_session_includes_user_id(db_session):
         user_id=user_id,
         scenario_id=scenario_id,
         name="테스트 캐릭터",
-        description="테스트용 캐릭터",
+        profile={},
         stats={"strength": 10, "intelligence": 10},
+        inventory=[],
     )
     db_session.add(character)
 
@@ -129,8 +132,9 @@ async def test_save_existing_session_preserves_user_id(db_session):
         user_id=user_id,
         scenario_id=scenario_id,
         name="테스트 캐릭터 2",
-        description="테스트용 캐릭터",
+        profile={},
         stats={"strength": 10, "intelligence": 10},
+        inventory=[],
     )
     db_session.add(character)
 
@@ -197,3 +201,107 @@ async def test_save_existing_session_preserves_user_id(db_session):
     assert (
         updated.user_id == user_id
     ), "returned entity should preserve user_id"
+
+
+@pytest.mark.asyncio
+async def test_delete_session_removes_memory_documents_before_messages(
+    db_session,
+):
+    """세션 삭제 시 메모리 문서를 먼저 제거해 FK 위반을 방지해야 함."""
+    user_id = get_uuid7()
+    character_id = get_uuid7()
+    scenario_id = get_uuid7()
+    session_id = get_uuid7()
+    message_id = get_uuid7()
+    memory_id = get_uuid7()
+
+    user = User(
+        id=user_id,
+        email=f"test_{user_id}@example.com",
+        name="삭제 테스트 사용자",
+        is_active=True,
+    )
+    db_session.add(user)
+
+    character = Character(
+        id=character_id,
+        user_id=user_id,
+        scenario_id=scenario_id,
+        name="삭제 테스트 캐릭터",
+        profile={},
+        stats={"strength": 10, "intelligence": 10},
+        inventory=[],
+    )
+    db_session.add(character)
+
+    scenario = Scenario(
+        id=scenario_id,
+        name="삭제 테스트 시나리오",
+        description="삭제 테스트용 시나리오",
+        initial_location="시작 위치",
+        world_setting="테스트 세계관",
+    )
+    db_session.add(scenario)
+    await db_session.flush()
+
+    session = GameSession(
+        id=session_id,
+        user_id=user_id,
+        character_id=character_id,
+        scenario_id=scenario_id,
+        current_location="테스트 위치",
+        game_state={},
+        status="active",
+        turn_count=0,
+        max_turns=30,
+        started_at=datetime.now(timezone.utc),
+        last_activity_at=datetime.now(timezone.utc),
+    )
+    db_session.add(session)
+    await db_session.flush()
+
+    message = GameMessage(
+        id=message_id,
+        session_id=session_id,
+        role="assistant",
+        content="테스트 메시지",
+        parsed_response=None,
+        token_count=None,
+        image_url=None,
+        created_at=datetime.now(timezone.utc),
+    )
+    db_session.add(message)
+    await db_session.flush()
+
+    memory = GameMemoryDocument(
+        id=memory_id,
+        session_id=session_id,
+        source_message_id=message_id,
+        role="assistant",
+        memory_type="summary",
+        content="테스트 메모리",
+        parsed_response=None,
+        embedding=[0.0] * 768,
+        created_at=datetime.now(timezone.utc),
+    )
+    db_session.add(memory)
+    await db_session.flush()
+
+    repo = GameSessionRepositoryImpl(db_session)
+
+    await repo.delete(session_id)
+    await db_session.flush()
+
+    session_result = await db_session.execute(
+        select(GameSession).where(GameSession.id == session_id)
+    )
+    message_result = await db_session.execute(
+        select(GameMessage).where(GameMessage.id == message_id)
+    )
+    memory_result = await db_session.execute(
+        select(GameMemoryDocument).where(GameMemoryDocument.id == memory_id)
+    )
+
+    assert session_result.scalar_one_or_none() is None
+    assert message_result.scalar_one_or_none() is None
+    assert memory_result.scalar_one_or_none() is None

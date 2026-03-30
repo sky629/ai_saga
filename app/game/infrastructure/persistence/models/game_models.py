@@ -41,9 +41,6 @@ class Scenario(Base):
         default=ScenarioDifficulty.NORMAL.value,
         index=True,
     )
-    system_prompt_override: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True
-    )
     max_turns: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     tags: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=lambda: []

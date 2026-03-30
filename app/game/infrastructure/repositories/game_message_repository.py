@@ -120,6 +120,23 @@ class GameMessageRepositoryImpl(GameMessageRepositoryInterface):
             return None
         return GameMessageMapper.to_entity(orm)
 
+    async def get_first_illustrated_message(
+        self, session_id: UUID
+    ) -> GameMessageEntity | None:
+        result = await self._db.execute(
+            select(GameMessage)
+            .where(
+                GameMessage.session_id == session_id,
+                GameMessage.image_url.is_not(None),
+            )
+            .order_by(GameMessage.created_at, GameMessage.id)
+            .limit(1)
+        )
+        orm = result.scalar_one_or_none()
+        if orm is None:
+            return None
+        return GameMessageMapper.to_entity(orm)
+
     async def update_image_url(
         self, message_id: UUID, image_url: str
     ) -> GameMessageEntity:

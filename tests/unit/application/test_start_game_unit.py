@@ -95,11 +95,14 @@ async def test_start_game_success(
 
     scenario = ScenarioEntity(
         id=scenario_id,
-        name="Scenario",
+        name="좀비 아포칼립스",
         description="Desc",
-        world_setting="World",
-        initial_location="Start",
-        genre="fantasy",
+        world_setting=(
+            "폐허가 된 서울에서 생존자와 좀비가 뒤엉킨다. "
+            "감염체는 소리와 움직임, 피 냄새에 민감하다."
+        ),
+        initial_location="서울 외곽 - 폐건물 2층",
+        genre="survival",
         difficulty="normal",
         max_turns=30,
         is_active=True,
@@ -184,11 +187,14 @@ async def test_start_game_llm_failure_propagates_exception(
 
     scenario = ScenarioEntity(
         id=scenario_id,
-        name="Scenario",
+        name="좀비 아포칼립스",
         description="Desc",
-        world_setting="World",
-        initial_location="Start",
-        genre="fantasy",
+        world_setting=(
+            "폐허가 된 서울에서 생존자와 좀비가 뒤엉킨다. "
+            "감염체는 소리와 움직임, 피 냄새에 민감하다."
+        ),
+        initial_location="서울 외곽 - 폐건물 2층",
+        genre="survival",
         difficulty="normal",
         max_turns=30,
         is_active=True,
@@ -252,11 +258,14 @@ async def test_start_game_stores_parsed_response_when_llm_returns_json(
 
     scenario = ScenarioEntity(
         id=scenario_id,
-        name="Scenario",
+        name="좀비 아포칼립스",
         description="Desc",
-        world_setting="World",
-        initial_location="Start",
-        genre="fantasy",
+        world_setting=(
+            "폐허가 된 서울에서 생존자와 좀비가 뒤엉킨다. "
+            "감염체는 소리와 움직임, 피 냄새에 민감하다."
+        ),
+        initial_location="서울 외곽 - 폐건물 2층",
+        genre="survival",
         difficulty="normal",
         max_turns=30,
         is_active=True,
@@ -404,11 +413,14 @@ async def test_start_game_uses_dummy_illustration_when_feature_disabled(
     )
     scenario = ScenarioEntity(
         id=scenario_id,
-        name="Scenario",
+        name="좀비 아포칼립스",
         description="Desc",
-        world_setting="World",
-        initial_location="Start",
-        genre="fantasy",
+        world_setting=(
+            "폐허가 된 서울에서 생존자와 좀비가 뒤엉킨다. "
+            "감염체는 소리와 움직임, 피 냄새에 민감하다."
+        ),
+        initial_location="서울 외곽 - 폐건물 2층",
+        genre="survival",
         difficulty="normal",
         max_turns=30,
         is_active=True,
@@ -441,15 +453,21 @@ async def test_start_game_uses_dummy_illustration_when_feature_disabled(
     assert result.image_url == "https://example.com/dummy-image.png"
     image_service.generate_image.assert_called_once()
     called_prompt = image_service.generate_image.call_args.kwargs["prompt"]
-    assert "Scene: Welcome to the game." in called_prompt
-    assert "The protagonist is Hero" in called_prompt
-    assert "The scene takes place at Start." in called_prompt
-    assert "fantasy setting" in called_prompt
-    assert "Retro 16-bit pixel art" in called_prompt
+    assert "Key visual beat: Welcome to the game." in called_prompt
+    assert "Primary subject: Hero" in called_prompt
+    assert "Location: 서울 외곽 - 폐건물 2층." in called_prompt
+    assert "zombie apocalypse" in called_prompt.lower()
+    assert "ruined modern seoul" in called_prompt.lower()
+    assert "Keep the world grounded in harsh survival drama." in called_prompt
     assert (
-        "No text, no speech bubbles, no captions, no UI, no HUD"
+        "gritty cinematic post-apocalyptic survival illustration"
         in called_prompt
     )
+    assert "cinematic Korean fantasy illustration" not in called_prompt
+    assert "crisp inked linework" in called_prompt
+    assert "RPG" not in called_prompt
+    assert "single cinematic full-bleed illustration" in called_prompt
+    assert "zero readable writing" in called_prompt
 
 
 @pytest.mark.asyncio

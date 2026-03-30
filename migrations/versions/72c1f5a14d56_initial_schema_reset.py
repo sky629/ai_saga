@@ -32,7 +32,6 @@ def upgrade() -> None:
         sa.Column("initial_location", sa.String(length=200), nullable=False),
         sa.Column("genre", sa.String(length=50), nullable=False),
         sa.Column("difficulty", sa.String(length=20), nullable=False),
-        sa.Column("system_prompt_override", sa.Text(), nullable=True),
         sa.Column("max_turns", sa.Integer(), nullable=False),
         sa.Column(
             "tags",

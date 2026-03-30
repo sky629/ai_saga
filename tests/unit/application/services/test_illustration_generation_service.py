@@ -9,6 +9,13 @@ from app.game.application.services.illustration_generation_service import (
 )
 from app.game.application.services.illustration_prompt_builder import (
     IllustrationPromptBuilder,
+    IllustrationPromptContext,
+)
+from app.game.application.services.illustration_scenario_profile_resolver import (
+    IllustrationScenarioProfileResolver,
+)
+from app.game.application.services.illustration_scene_spec_builder import (
+    IllustrationSceneSpecBuilder,
 )
 
 
@@ -30,26 +37,31 @@ class TestIllustrationGenerationService:
     async def test_generate_uses_shared_prompt_builder_and_image_service(self):
         image_service = AsyncMock()
         image_service.generate_image.return_value = "https://cdn/image.png"
-
-        result = await IllustrationGenerationService.generate(
-            image_service=image_service,
-            narrative="고블린이 성벽 위로 기어오른다.",
-            session_id="session-1",
-            user_id="user-1",
+        context = IllustrationPromptContext(
+            scene_narrative="고블린이 성벽 위로 기어오른다.",
             character_name="실비아",
             character_description="- 외형: 검은 단발과 오래된 흉터.",
             current_location="북쪽 성벽",
             scenario_genre="fantasy",
+            scenario_name="왕국의 몰락",
+            scenario_world_setting="북쪽 왕국의 성벽과 유적이 이어진다.",
+        )
+
+        result = await IllustrationGenerationService.generate(
+            image_service=image_service,
+            context=context,
+            session_id="session-1",
+            user_id="user-1",
         )
 
         assert result == "https://cdn/image.png"
         image_service.generate_image.assert_called_once_with(
             prompt=IllustrationPromptBuilder.build(
-                narrative="고블린이 성벽 위로 기어오른다.",
-                character_name="실비아",
-                character_description="- 외형: 검은 단발과 오래된 흉터.",
-                current_location="북쪽 성벽",
-                scenario_genre="fantasy",
+                context=context,
+                scene_spec=IllustrationSceneSpecBuilder.build(context),
+                visual_profile=IllustrationScenarioProfileResolver.resolve(
+                    context
+                ),
             ),
             session_id="session-1",
             user_id="user-1",

@@ -135,16 +135,22 @@ class GenerateIllustrationUseCase:
             raw_content=message.content,
             parsed_response=message.parsed_response,
         )
-
-        image_url = await IllustrationGenerationService.generate(
-            image_service=self._image_service,
+        prompt_context = IllustrationGenerationService.build_context(
             narrative=scene_narrative,
-            session_id=str(session.id),
-            user_id=str(session.user_id),
             character_name=character.name,
             character_description=character.prompt_profile,
             current_location=session.current_location,
             scenario_genre=scenario.genre,
+            scenario_name=scenario.name,
+            scenario_world_setting=scenario.world_setting,
+            scenario_tags=tuple(scenario.tags),
+        )
+
+        image_url = await IllustrationGenerationService.generate(
+            image_service=self._image_service,
+            context=prompt_context,
+            session_id=str(session.id),
+            user_id=str(session.user_id),
         )
 
         if image_url is None:

@@ -1,7 +1,6 @@
 """Scenario Domain Entity."""
 
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -25,12 +24,11 @@ class ScenarioEntity(BaseModel):
     initial_location: str = Field(max_length=200)
     genre: ScenarioGenre = ScenarioGenre.FANTASY
     difficulty: ScenarioDifficulty = ScenarioDifficulty.NORMAL
-    system_prompt_override: Optional[str] = None
     max_turns: int = Field(gt=0, default=30)
     tags: list[str] = Field(default_factory=list)
-    thumbnail_url: Optional[str] = None
-    hook: Optional[str] = None
-    recommended_for: Optional[str] = None
+    thumbnail_url: str | None = None
+    hook: str | None = None
+    recommended_for: str | None = None
     is_active: bool = True
     created_at: datetime
 
@@ -50,8 +48,3 @@ class ScenarioEntity(BaseModel):
     def is_playable(self) -> bool:
         """플레이 가능한 시나리오인지 확인."""
         return self.is_active
-
-    @property
-    def effective_system_prompt(self) -> Optional[str]:
-        """적용할 시스템 프롬프트 (오버라이드 우선)."""
-        return self.system_prompt_override

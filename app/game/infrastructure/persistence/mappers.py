@@ -124,7 +124,6 @@ class ScenarioMapper:
             initial_location=orm.initial_location,
             genre=ScenarioGenre(orm.genre),
             difficulty=ScenarioDifficulty(orm.difficulty),
-            system_prompt_override=orm.system_prompt_override,
             max_turns=orm.max_turns,
             tags=orm.tags or [],
             thumbnail_url=orm.thumbnail_url,

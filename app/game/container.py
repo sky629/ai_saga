@@ -230,7 +230,10 @@ class GameContainer:
 
     def get_session_query(self):
         """게임 세션 단건 조회 쿼리."""
-        return GetSessionQuery(self.session_repository())
+        return GetSessionQuery(
+            self.session_repository(),
+            self.message_repository(),
+        )
 
 
 # === FastAPI Depends Integration ===

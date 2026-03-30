@@ -1,10 +1,46 @@
-"""일러스트 생성용 구조화 프롬프트 빌더."""
+"""일러스트 프롬프트 직렬화 도구."""
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class IllustrationPromptContext:
+    """일러스트 생성 입력 컨텍스트."""
+
+    scene_narrative: str
+    character_name: str = ""
+    character_description: str = ""
+    current_location: str = ""
+    scenario_name: str = ""
+    scenario_genre: str = ""
+    scenario_world_setting: str = ""
+    scenario_tags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class IllustrationSceneSpec:
+    """장면 구조화 결과."""
+
+    location: str
+    visible_character_count: int
+    other_visible_figures: tuple[str, ...]
+    required_props: tuple[str, ...]
+    key_visual_beat: str
+    mood_and_lighting: str
+
+
+@dataclass(frozen=True)
+class IllustrationVisualProfile:
+    """장르/시나리오 기반 비주얼 방향."""
+
+    opening_line: str
+    world_guidance: str
+    anchor_lines: tuple[str, ...] = ()
+    negative_guidance: tuple[str, ...] = ()
 
 
 class IllustrationPromptBuilder:
-    """일러스트 생성 모델에 전달할 장면 프롬프트를 조립한다."""
-
-    _FALLBACK_SCENE = "mysterious fantasy RPG adventure scene"
+    """일러스트 생성 모델에 전달할 최종 프롬프트를 직렬화한다."""
 
     @staticmethod
     def _normalize_text(value: object, max_length: int) -> str:
@@ -13,84 +49,111 @@ class IllustrationPromptBuilder:
             return ""
         return " ".join(value.split())[:max_length]
 
+    @staticmethod
+    def _ensure_terminal_punctuation(value: str) -> str:
+        """문장 끝 문장부호를 한 번만 유지한다."""
+        if not value:
+            return value
+        if value.endswith((".", "!", "?")):
+            return value
+        return f"{value}."
+
     @classmethod
     def build(
         cls,
-        narrative: str,
-        character_name: str = "",
-        character_description: str = "",
-        current_location: str = "",
-        scenario_genre: str = "",
+        context: IllustrationPromptContext,
+        scene_spec: IllustrationSceneSpec,
+        visual_profile: IllustrationVisualProfile,
     ) -> str:
-        """장면 설명형 프롬프트를 생성한다."""
-        scene_brief = (
-            cls._normalize_text(narrative, 400) or cls._FALLBACK_SCENE
+        """구조화된 정보를 최종 프롬프트 문자열로 변환한다."""
+        normalized_character_name = cls._normalize_text(
+            context.character_name, 100
         )
-        normalized_character_name = cls._normalize_text(character_name, 100)
         normalized_character_description = cls._normalize_text(
-            character_description, 500
+            context.character_description, 500
         )
-        normalized_location = cls._normalize_text(current_location, 200)
-        normalized_genre = cls._normalize_text(scenario_genre, 80)
 
         parts = [
+            visual_profile.opening_line,
             (
-                "Retro 16-bit pixel art narrative scene illustration. "
-                "Show one full-frame story moment only."
+                "Use crisp inked linework, restrained cel shading, "
+                "dramatic cinematic composition, and readable silhouettes."
             ),
+            "Format: single cinematic full-bleed illustration.",
             (
-                "The viewer should understand this turn's mood, tension, and "
-                "immediate situation at a glance."
+                "The image must contain zero readable writing, letters, "
+                "numbers, symbols, dialogue balloons, sound effects, caption "
+                "boxes, signage text, labels, or interface elements."
             ),
-            (
-                "No text, no speech bubbles, no captions, no UI, no HUD, no "
-                "menu, no logo, no watermark, no title area, no metadata block, "
-                "no poster layout, no inventory screen, no dialogue box, no "
-                "status window, no floating labels, and no white margins."
-            ),
-            f"Scene: {scene_brief}.",
         ]
+
+        if scene_spec.location:
+            parts.append(
+                "Location: "
+                + cls._ensure_terminal_punctuation(scene_spec.location)
+            )
+
+        parts.append(
+            f"Visible characters: exactly {scene_spec.visible_character_count}."
+        )
 
         if normalized_character_name:
             parts.append(
-                f"The protagonist is {normalized_character_name} and must be clearly identifiable at first glance."
+                f"Primary subject: {normalized_character_name}, clearly identifiable at first glance."
             )
+
+        if scene_spec.other_visible_figures:
+            parts.append(
+                "Other visible figures: "
+                + ", ".join(scene_spec.other_visible_figures)
+                + "."
+            )
+
+        if scene_spec.required_props:
+            parts.append(
+                "Required props: " + ", ".join(scene_spec.required_props) + "."
+            )
+
+        parts.append(
+            "Key visual beat: "
+            + cls._ensure_terminal_punctuation(scene_spec.key_visual_beat)
+        )
+        parts.append(
+            "Mood and lighting: "
+            + cls._ensure_terminal_punctuation(scene_spec.mood_and_lighting)
+        )
 
         if normalized_character_description:
             parts.append(
-                f"Keep these protagonist details consistent: {normalized_character_description}."
+                "Keep these protagonist details consistent: "
+                + cls._ensure_terminal_punctuation(
+                    normalized_character_description
+                )
             )
 
-        if normalized_location:
-            parts.append(f"The scene takes place at {normalized_location}.")
+        if visual_profile.world_guidance:
+            parts.append(visual_profile.world_guidance)
 
-        if normalized_genre:
-            parts.append(
-                f"Keep the visual language grounded in a {normalized_genre} setting and avoid unrelated genre elements."
-            )
+        parts.extend(visual_profile.anchor_lines)
+        parts.extend(visual_profile.negative_guidance)
 
         parts.extend(
             [
+                "Show only the explicitly described figures.",
+                "Do not add extra guards, crowds, or background bystanders.",
                 (
-                    "Use cinematic framing, dynamic lighting, readable silhouettes, "
-                    "clear action, and strong separation between the protagonist "
-                    "and other figures."
+                    "Meaningful background detail is required when "
+                    "architecture, streets, interiors, or ruins are implied."
                 ),
                 (
-                    "Only include people, creatures, or opponents that are explicitly "
-                    "described or strongly implied by the scene. Do not add a crowd, "
-                    "party members, bystanders, or duplicate characters unless the "
-                    "scene clearly requires them."
+                    "Avoid battle-line formations, idle posing, "
+                    "duplicate-looking people, framed card layouts, and "
+                    "character-select compositions."
                 ),
                 (
-                    "If buildings, streets, interiors, ruins, furniture, weather, "
-                    "or environmental props are implied, show them clearly and "
-                    "give the environment meaningful visual weight."
-                ),
-                (
-                    "Avoid empty ground, idle standing poses, duplicate-looking "
-                    "people, game battle screen layouts, character-select layouts, "
-                    "and framed card-like compositions."
+                    "Avoid cute or soft anime styling, pastel colors, "
+                    "comedic expressions, glossy poster-like rendering, and "
+                    "overly bright fantasy cheerfulness."
                 ),
             ]
         )

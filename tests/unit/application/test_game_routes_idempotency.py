@@ -11,6 +11,7 @@ from app.common.utils.id_generator import get_uuid7
 from app.game.presentation.routes.game_routes import (
     create_character,
     generate_illustration,
+    get_session,
     start_game,
     submit_action,
 )
@@ -114,6 +115,35 @@ async def test_generate_illustration_uses_message_scoped_lock_key():
         f"game:illustration:{message_id}",
         ttl_ms=20000,
     )
+
+
+@pytest.mark.asyncio
+async def test_get_session_preserves_image_url_from_query_result():
+    session_id = get_uuid7()
+    current_user = SimpleNamespace(id=get_uuid7())
+    query = AsyncMock()
+    query.execute.return_value = SimpleNamespace(
+        id=session_id,
+        character_id=get_uuid7(),
+        scenario_id=get_uuid7(),
+        current_location="항구",
+        game_state={"gold": 3},
+        status="active",
+        turn_count=1,
+        max_turns=10,
+        ending_type=None,
+        started_at=get_utc_datetime(),
+        last_activity_at=get_utc_datetime(),
+        image_url="https://example.com/session.png",
+    )
+
+    response = await get_session(
+        session_id=session_id,
+        query=query,
+        current_user=current_user,
+    )
+
+    assert response.image_url == "https://example.com/session.png"
 
 
 @pytest.mark.asyncio

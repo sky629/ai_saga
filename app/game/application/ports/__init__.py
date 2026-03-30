@@ -141,6 +141,13 @@ class GameMessageRepositoryInterface(ABC):
         pass
 
     @abstractmethod
+    async def get_first_illustrated_message(
+        self, session_id: UUID
+    ) -> Optional[GameMessageEntity]:
+        """세션의 첫 삽화 메시지 조회."""
+        pass
+
+    @abstractmethod
     async def update_image_url(
         self, message_id: UUID, image_url: str
     ) -> GameMessageEntity:

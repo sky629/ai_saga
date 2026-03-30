@@ -20,6 +20,7 @@ from app.game.infrastructure.persistence.mappers import (
 )
 from app.game.infrastructure.persistence.models.game_models import (
     Character,
+    GameMemoryDocument,
     GameMessage,
     GameSession,
 )
@@ -184,6 +185,11 @@ class GameSessionRepositoryImpl(GameSessionRepositoryInterface):
 
     async def delete(self, session_id: UUID) -> None:
         """세션 삭제."""
+        await self._db.execute(
+            sql_delete(GameMemoryDocument).where(
+                GameMemoryDocument.session_id == session_id
+            )
+        )
         # Delete related messages first
         await self._db.execute(
             sql_delete(GameMessage).where(GameMessage.session_id == session_id)

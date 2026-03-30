@@ -146,11 +146,14 @@ class TestGenerateIllustrationUseCase:
         )
         scenario = ScenarioEntity(
             id=session.scenario_id,
-            name="감옥 탈출",
+            name="좀비 아포칼립스",
             description="탈출 시나리오",
-            world_setting="지하 감옥과 오래된 왕국",
+            world_setting=(
+                "폐허가 된 서울에서 생존자와 좀비가 뒤엉킨다. "
+                "감염체는 소리와 움직임, 피 냄새에 민감하다."
+            ),
             initial_location="숲 속",
-            genre="fantasy",
+            genre="survival",
             difficulty="normal",
             max_turns=30,
             is_active=True,
@@ -181,15 +184,25 @@ class TestGenerateIllustrationUseCase:
             "prompt"
         ]
         assert "고블린이 당신을 향해 달려옵니다." in called_prompt
-        assert "Scene:" in called_prompt
-        assert "The protagonist is 실비아" in called_prompt
+        assert "Key visual beat:" in called_prompt
+        assert "Primary subject: 실비아" in called_prompt
         assert "이름: 실비아." in called_prompt
-        assert "The scene takes place at 숲 속." in called_prompt
-        assert "fantasy setting" in called_prompt
+        assert "Location: 숲 속." in called_prompt
+        assert "Visible characters: exactly 2." in called_prompt
+        assert "zombie apocalypse" in called_prompt.lower()
+        assert "ruined modern seoul" in called_prompt.lower()
         assert (
-            "No text, no speech bubbles, no captions, no UI, no HUD"
+            "Keep the world grounded in harsh survival drama." in called_prompt
+        )
+        assert "single cinematic full-bleed illustration" in called_prompt
+        assert "zero readable writing" in called_prompt
+        assert (
+            "gritty cinematic post-apocalyptic survival illustration"
             in called_prompt
         )
+        assert "cinematic Korean fantasy illustration" not in called_prompt
+        assert "Mood and lighting:" in called_prompt
+        assert "RPG" not in called_prompt
         mock_cache_service.set.assert_called_once_with(
             f"game:illustration:result:{message_id}",
             expected_url,

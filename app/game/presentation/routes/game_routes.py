@@ -310,12 +310,13 @@ async def get_session(
         scenario_id=session.scenario_id,
         current_location=session.current_location,
         game_state=cleaned_game_state,
-        status=session.status.value,
+        status=session.status,
         turn_count=session.turn_count,
         max_turns=session.max_turns,
-        ending_type=session.ending_type.value if session.ending_type else None,
+        ending_type=session.ending_type,
         started_at=session.started_at,
         last_activity_at=session.last_activity_at,
+        image_url=session.image_url,
     )
 
 

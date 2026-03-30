@@ -5,6 +5,13 @@ from typing import Optional
 from app.game.application.ports import ImageGenerationServiceInterface
 from app.game.application.services.illustration_prompt_builder import (
     IllustrationPromptBuilder,
+    IllustrationPromptContext,
+)
+from app.game.application.services.illustration_scenario_profile_resolver import (
+    IllustrationScenarioProfileResolver,
+)
+from app.game.application.services.illustration_scene_spec_builder import (
+    IllustrationSceneSpecBuilder,
 )
 from app.game.domain.services import GameMasterService
 
@@ -26,23 +33,44 @@ class IllustrationGenerationService:
         return raw_content
 
     @staticmethod
-    async def generate(
-        image_service: ImageGenerationServiceInterface,
+    def build_context(
         narrative: str,
-        session_id: str,
-        user_id: str,
         character_name: str = "",
         character_description: str = "",
         current_location: str = "",
         scenario_genre: str = "",
-    ) -> Optional[str]:
-        """일관된 프롬프트로 이미지를 생성한다."""
-        prompt = IllustrationPromptBuilder.build(
-            narrative=narrative,
+        scenario_name: str = "",
+        scenario_world_setting: str = "",
+        scenario_tags: tuple[str, ...] = (),
+    ) -> IllustrationPromptContext:
+        """이미지 생성용 컨텍스트를 조립한다."""
+        return IllustrationPromptContext(
+            scene_narrative=narrative,
             character_name=character_name,
             character_description=character_description,
             current_location=current_location,
-            scenario_genre=scenario_genre,
+            scenario_genre=getattr(scenario_genre, "value", scenario_genre),
+            scenario_name=scenario_name,
+            scenario_world_setting=scenario_world_setting,
+            scenario_tags=tuple(
+                str(tag) for tag in scenario_tags if isinstance(tag, str)
+            ),
+        )
+
+    @staticmethod
+    async def generate(
+        image_service: ImageGenerationServiceInterface,
+        context: IllustrationPromptContext,
+        session_id: str,
+        user_id: str,
+    ) -> Optional[str]:
+        """일관된 프롬프트로 이미지를 생성한다."""
+        scene_spec = IllustrationSceneSpecBuilder.build(context)
+        visual_profile = IllustrationScenarioProfileResolver.resolve(context)
+        prompt = IllustrationPromptBuilder.build(
+            context=context,
+            scene_spec=scene_spec,
+            visual_profile=visual_profile,
         )
         return await image_service.generate_image(
             prompt=prompt,

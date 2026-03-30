@@ -19,8 +19,8 @@ fi
 
 # Wait for Postgres to be ready
 echo "Waiting for Postgres..."
-until nc -z localhost 5432; do
-  echo "  - Postgres not ready... waiting"
+until docker compose exec -T postgres pg_isready -U postgres > /dev/null 2>&1; do
+  echo "  - Postgres not ready for connections... waiting"
   sleep 2
 done
 
@@ -31,7 +31,9 @@ docker compose stop app
 # 3. Load Environment Variables from .env
 if [ -f .env ]; then
   echo "Loading .env..."
-  export $(grep -v '^#' .env | xargs)
+  set -a
+  source .env
+  set +a
 else
   echo "Error: .env file not found!"
   exit 1
@@ -44,8 +46,14 @@ export REDIS_URL=redis://localhost:6379
 export KAFKA_BOOTSTRAP_SERVERS=localhost:9092
 
 # 5. Run database migrations
+echo "Checking current Alembic revision..."
+uv run alembic current
+
 echo "Running database migrations..."
 uv run alembic upgrade head
+
+echo "Alembic revision after upgrade..."
+uv run alembic current
 
 # 6. Run with uv
 echo "Starting Application..."
