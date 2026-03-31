@@ -73,6 +73,49 @@ async def test_generates_real_image_when_generation_enabled_in_local(
     assert "ACL" not in put_kwargs
 
 
+@pytest.mark.asyncio
+async def test_generate_images_uses_square_aspect_ratio(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        settings, "image_model", "imagen-4.0-fast-generate-001"
+    )
+
+    class _GeneratedImage:
+        class _ImagePayload:
+            image_bytes = b"png-bytes"
+
+        image = _ImagePayload()
+
+    class _GenerateImagesResponse:
+        generated_images = [_GeneratedImage()]
+
+    with (
+        patch(
+            "app.game.infrastructure.adapters.image_service.boto3.client"
+        ) as mock_boto_client,
+        patch("app.game.infrastructure.adapters.image_service.genai.Client"),
+    ):
+        adapter = ImageGenerationServiceAdapter()
+        adapter._genai_client.aio.models.generate_images = AsyncMock(
+            return_value=_GenerateImagesResponse()
+        )
+
+        image_url = await adapter.generate_image(
+            prompt="farm scene",
+            session_id="session-1",
+            user_id="user-1",
+        )
+
+    assert image_url is not None
+    generate_kwargs = (
+        adapter._genai_client.aio.models.generate_images.call_args.kwargs
+    )
+    config = generate_kwargs["config"]
+    assert config.aspect_ratio == "1:1"
+    mock_boto_client.return_value.put_object.assert_called_once()
+
+
 def test_uses_generic_object_storage_settings_for_boto_client(monkeypatch):
     """범용 object storage 설정으로 boto3 client를 구성해야 한다."""
     monkeypatch.setattr(

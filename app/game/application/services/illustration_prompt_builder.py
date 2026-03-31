@@ -15,6 +15,7 @@ class IllustrationPromptContext:
     scenario_genre: str = ""
     scenario_world_setting: str = ""
     scenario_tags: tuple[str, ...] = ()
+    state_changes: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,7 @@ class IllustrationSceneSpec:
     visible_character_count: int
     other_visible_figures: tuple[str, ...]
     required_props: tuple[str, ...]
+    state_fact_lines: tuple[str, ...]
     key_visual_beat: str
     mood_and_lighting: str
 
@@ -65,67 +67,68 @@ class IllustrationPromptBuilder:
         scene_spec: IllustrationSceneSpec,
         visual_profile: IllustrationVisualProfile,
     ) -> str:
-        """구조화된 정보를 최종 프롬프트 문자열로 변환한다."""
+        """구조화된 정보를 짧은 장면 지시형 프롬프트로 변환한다."""
+        narrative = cls._normalize_text(context.scene_narrative, 500)
+        if not narrative:
+            narrative = cls._normalize_text(scene_spec.key_visual_beat, 500)
+        if not narrative:
+            narrative = "mysterious scene"
+
         normalized_character_name = cls._normalize_text(
             context.character_name, 100
         )
         normalized_character_description = cls._normalize_text(
-            context.character_description, 500
+            context.character_description, 240
         )
 
         parts = [
             visual_profile.opening_line,
+            "Single-panel illustration only.",
             (
-                "Use crisp inked linework, restrained cel shading, "
-                "dramatic cinematic composition, and readable silhouettes."
-            ),
-            "Format: single cinematic full-bleed illustration.",
-            (
-                "The image must contain zero readable writing, letters, "
-                "numbers, symbols, dialogue balloons, sound effects, caption "
-                "boxes, signage text, labels, or interface elements."
+                "Depict this exact story moment: "
+                + cls._ensure_terminal_punctuation(narrative)
             ),
         ]
 
         if scene_spec.location:
             parts.append(
-                "Location: "
+                "Set the scene at "
                 + cls._ensure_terminal_punctuation(scene_spec.location)
             )
 
-        parts.append(
-            f"Visible characters: exactly {scene_spec.visible_character_count}."
-        )
-
         if normalized_character_name:
-            parts.append(
-                f"Primary subject: {normalized_character_name}, clearly identifiable at first glance."
-            )
+            parts.append(f"The main focus is {normalized_character_name}.")
+
+        parts.append(
+            f"Show exactly {scene_spec.visible_character_count} visible figures."
+        )
 
         if scene_spec.other_visible_figures:
             parts.append(
-                "Other visible figures: "
+                "Only these additional visible figures appear: "
                 + ", ".join(scene_spec.other_visible_figures)
                 + "."
             )
 
         if scene_spec.required_props:
             parts.append(
-                "Required props: " + ", ".join(scene_spec.required_props) + "."
+                "Important visual details: "
+                + ", ".join(scene_spec.required_props)
+                + "."
             )
 
-        parts.append(
-            "Key visual beat: "
-            + cls._ensure_terminal_punctuation(scene_spec.key_visual_beat)
-        )
-        parts.append(
-            "Mood and lighting: "
-            + cls._ensure_terminal_punctuation(scene_spec.mood_and_lighting)
-        )
+        if scene_spec.state_fact_lines:
+            parts.append(
+                "These scene facts must stay true: "
+                + " ".join(
+                    cls._ensure_terminal_punctuation(line)
+                    for line in scene_spec.state_fact_lines
+                )
+            )
 
         if normalized_character_description:
             parts.append(
-                "Keep these protagonist details consistent: "
+                "Keep the protagonist visually consistent with: "
                 + cls._ensure_terminal_punctuation(
                     normalized_character_description
                 )
@@ -139,21 +142,18 @@ class IllustrationPromptBuilder:
 
         parts.extend(
             [
-                "Show only the explicitly described figures.",
-                "Do not add extra guards, crowds, or background bystanders.",
                 (
-                    "Meaningful background detail is required when "
-                    "architecture, streets, interiors, or ruins are implied."
+                    "No readable text, letters, words, numbers, captions, "
+                    "dialogue balloons, sound effects, subtitles, signage, "
+                    "labels, logos, or watermarks anywhere in the image."
                 ),
                 (
-                    "Avoid battle-line formations, idle posing, "
-                    "duplicate-looking people, framed card layouts, and "
-                    "character-select compositions."
+                    "Do not render documents, white text boxes, book pages, "
+                    "forms, posters, menus, HUDs, chat windows, or comic panels."
                 ),
                 (
-                    "Avoid cute or soft anime styling, pastel colors, "
-                    "comedic expressions, glossy poster-like rendering, and "
-                    "overly bright fantasy cheerfulness."
+                    "This must look like a clean illustration, not a "
+                    "text-heavy graphic, screenshot, or UI mockup."
                 ),
             ]
         )

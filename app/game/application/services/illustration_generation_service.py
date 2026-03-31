@@ -35,6 +35,7 @@ class IllustrationGenerationService:
     @staticmethod
     def build_context(
         narrative: str,
+        parsed_response: Optional[dict] = None,
         character_name: str = "",
         character_description: str = "",
         current_location: str = "",
@@ -42,8 +43,16 @@ class IllustrationGenerationService:
         scenario_name: str = "",
         scenario_world_setting: str = "",
         scenario_tags: tuple[str, ...] = (),
+        state_changes: Optional[dict] = None,
     ) -> IllustrationPromptContext:
         """이미지 생성용 컨텍스트를 조립한다."""
+        extracted_state_changes = state_changes
+        if extracted_state_changes is None and isinstance(
+            parsed_response, dict
+        ):
+            candidate = parsed_response.get("state_changes")
+            if isinstance(candidate, dict):
+                extracted_state_changes = candidate
         return IllustrationPromptContext(
             scene_narrative=narrative,
             character_name=character_name,
@@ -55,6 +64,7 @@ class IllustrationGenerationService:
             scenario_tags=tuple(
                 str(tag) for tag in scenario_tags if isinstance(tag, str)
             ),
+            state_changes=extracted_state_changes,
         )
 
     @staticmethod

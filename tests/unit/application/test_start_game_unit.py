@@ -453,21 +453,15 @@ async def test_start_game_uses_dummy_illustration_when_feature_disabled(
     assert result.image_url == "https://example.com/dummy-image.png"
     image_service.generate_image.assert_called_once()
     called_prompt = image_service.generate_image.call_args.kwargs["prompt"]
-    assert "Key visual beat: Welcome to the game." in called_prompt
-    assert "Primary subject: Hero" in called_prompt
-    assert "Location: 서울 외곽 - 폐건물 2층." in called_prompt
-    assert "zombie apocalypse" in called_prompt.lower()
-    assert "ruined modern seoul" in called_prompt.lower()
-    assert "Keep the world grounded in harsh survival drama." in called_prompt
     assert (
-        "gritty cinematic post-apocalyptic survival illustration"
-        in called_prompt
+        "Depict this exact story moment: Welcome to the game." in called_prompt
     )
-    assert "cinematic Korean fantasy illustration" not in called_prompt
-    assert "crisp inked linework" in called_prompt
-    assert "RPG" not in called_prompt
-    assert "single cinematic full-bleed illustration" in called_prompt
-    assert "zero readable writing" in called_prompt
+    assert "Single-panel illustration only." in called_prompt
+    assert "No readable text" in called_prompt
+    assert "This must look like a clean illustration" in called_prompt
+    assert "Set the scene at 서울 외곽 - 폐건물 2층." in called_prompt
+    assert "The main focus is Hero." in called_prompt
+    assert "zombie apocalypse" in called_prompt.lower()
 
 
 @pytest.mark.asyncio

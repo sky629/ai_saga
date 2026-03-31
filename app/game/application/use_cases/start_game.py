@@ -200,6 +200,7 @@ class StartGameUseCase:
             )
             prompt_context = IllustrationGenerationService.build_context(
                 narrative=scene_narrative,
+                parsed_response=parsed,
                 character_name=character.name,
                 character_description=character.prompt_profile,
                 current_location=session.current_location,

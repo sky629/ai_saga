@@ -46,3 +46,27 @@ class TestIllustrationSceneSpecBuilder:
 
         assert spec.location == "서울 외곽 - 폐건물 2층"
         assert spec.visible_character_count == 1
+
+    def test_build_prioritizes_state_changes_over_narrative(self):
+        context = IllustrationPromptContext(
+            scene_narrative="당신은 숲 속에서 숨을 고르며 주변을 살핀다.",
+            character_name="민준",
+            current_location="숲 속",
+            state_changes={
+                "location": "서울역 지하 통로",
+                "npcs_met": ["하윤"],
+                "discoveries": ["깨진 비상 방송 장치"],
+                "items_gained": ["신호탄 권총"],
+                "items_lost": ["빈 생수병"],
+            },
+        )
+
+        spec = IllustrationSceneSpecBuilder.build(context)
+
+        assert spec.location == "서울역 지하 통로"
+        assert "named NPC present: 하윤" in spec.other_visible_figures
+        assert "discovered clue: 깨진 비상 방송 장치" in spec.required_props
+        assert "newly acquired item: 신호탄 권총" in spec.required_props
+        assert "recently lost item: 빈 생수병" in spec.required_props
+        assert "Confirmed location: 서울역 지하 통로" in spec.state_fact_lines
+        assert spec.visible_character_count == 2

@@ -56,7 +56,14 @@ def _make_ai_message(
         session_id=session_id,
         role=MessageRole.ASSISTANT,
         content="고블린이 당신을 향해 달려옵니다.",
-        parsed_response=None,
+        parsed_response={
+            "narrative": "고블린이 당신을 향해 달려옵니다.",
+            "state_changes": {
+                "location": "서울역 지하 통로",
+                "npcs_met": ["하윤"],
+                "discoveries": ["깨진 비상 방송 장치"],
+            },
+        },
         token_count=None,
         image_url=image_url,
         created_at=get_utc_datetime(),
@@ -183,26 +190,14 @@ class TestGenerateIllustrationUseCase:
         called_prompt = mock_image_service.generate_image.call_args.kwargs[
             "prompt"
         ]
-        assert "고블린이 당신을 향해 달려옵니다." in called_prompt
-        assert "Key visual beat:" in called_prompt
-        assert "Primary subject: 실비아" in called_prompt
-        assert "이름: 실비아." in called_prompt
-        assert "Location: 숲 속." in called_prompt
-        assert "Visible characters: exactly 2." in called_prompt
+        assert "Depict this exact story moment:" in called_prompt
+        assert "Single-panel illustration only." in called_prompt
+        assert "No readable text" in called_prompt
+        assert "This must look like a clean illustration" in called_prompt
+        assert "Set the scene at 서울역 지하 통로." in called_prompt
+        assert "The main focus is 실비아." in called_prompt
+        assert "These scene facts must stay true:" in called_prompt
         assert "zombie apocalypse" in called_prompt.lower()
-        assert "ruined modern seoul" in called_prompt.lower()
-        assert (
-            "Keep the world grounded in harsh survival drama." in called_prompt
-        )
-        assert "single cinematic full-bleed illustration" in called_prompt
-        assert "zero readable writing" in called_prompt
-        assert (
-            "gritty cinematic post-apocalyptic survival illustration"
-            in called_prompt
-        )
-        assert "cinematic Korean fantasy illustration" not in called_prompt
-        assert "Mood and lighting:" in called_prompt
-        assert "RPG" not in called_prompt
         mock_cache_service.set.assert_called_once_with(
             f"game:illustration:result:{message_id}",
             expected_url,

@@ -153,6 +153,7 @@ class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
                     prompt=prompt,
                     config=types.GenerateImagesConfig(
                         number_of_images=1,
+                        aspect_ratio="1:1",
                         output_mime_type="image/png",
                     ),
                 )

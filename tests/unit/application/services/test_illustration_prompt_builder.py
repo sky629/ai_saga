@@ -24,6 +24,7 @@ class TestIllustrationPromptBuilder:
             visible_character_count=2,
             other_visible_figures=("one goblin attacker",),
             required_props=("lit torch",),
+            state_fact_lines=("Confirmed location: 북쪽 성벽",),
             key_visual_beat=context.scene_narrative,
             mood_and_lighting="restrained danger",
         )
@@ -46,17 +47,16 @@ class TestIllustrationPromptBuilder:
         )
 
         assert "cinematic Korean fantasy illustration" in prompt
-        assert "single cinematic full-bleed illustration" in prompt
-        assert "zero readable writing" in prompt
-        assert "Primary subject: 실비아" in prompt
-        assert "Other visible figures: one goblin attacker." in prompt
-        assert "Required props: lit torch." in prompt
-        assert (
-            "Key visual beat: 고블린이 횃불을 들고 폐허 속에서 영웅에게 달려든다."
-            in prompt
-        )
+        assert "Single-panel illustration only." in prompt
+        assert "Depict this exact story moment:" in prompt
+        assert "No readable text" in prompt
+        assert "This must look like a clean illustration" in prompt
+        assert "Set the scene at 북쪽 성벽." in prompt
+        assert "The main focus is 실비아." in prompt
+        assert "Only these additional visible figures appear:" in prompt
+        assert "Important visual details: lit torch." in prompt
+        assert "These scene facts must stay true:" in prompt
         assert "Scenario context: 왕국의 몰락." in prompt
-        assert "Do not introduce modern firearms" in prompt
 
     def test_build_omits_optional_sections_when_input_is_empty(self):
         context = IllustrationPromptContext(
@@ -67,6 +67,7 @@ class TestIllustrationPromptBuilder:
             visible_character_count=1,
             other_visible_figures=(),
             required_props=(),
+            state_fact_lines=(),
             key_visual_beat="안개가 골목을 덮는다.",
             mood_and_lighting="restrained story tension",
         )
@@ -84,7 +85,10 @@ class TestIllustrationPromptBuilder:
             visual_profile=visual_profile,
         )
 
-        assert "Location:" not in prompt
-        assert "Primary subject:" not in prompt
-        assert "Other visible figures:" not in prompt
-        assert "Required props:" not in prompt
+        assert (
+            "Depict this exact story moment: 안개가 골목을 덮는다." in prompt
+        )
+        assert "Set the scene at" not in prompt
+        assert "The main focus is" not in prompt
+        assert "Only these additional visible figures appear:" not in prompt
+        assert "Important visual details:" not in prompt

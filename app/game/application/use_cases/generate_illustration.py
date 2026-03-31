@@ -137,6 +137,7 @@ class GenerateIllustrationUseCase:
         )
         prompt_context = IllustrationGenerationService.build_context(
             narrative=scene_narrative,
+            parsed_response=message.parsed_response,
             character_name=character.name,
             character_description=character.prompt_profile,
             current_location=session.current_location,

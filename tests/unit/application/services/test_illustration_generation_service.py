@@ -33,6 +33,24 @@ class TestIllustrationGenerationService:
 
         assert narrative == "검객이 추격자를 향해 돌진한다."
 
+    def test_build_context_extracts_state_changes_from_parsed_response(self):
+        context = IllustrationGenerationService.build_context(
+            narrative="당신은 소리를 따라 몸을 돌린다.",
+            parsed_response={
+                "narrative": "당신은 소리를 따라 몸을 돌린다.",
+                "state_changes": {
+                    "location": "서울역 지하 통로",
+                    "discoveries": ["깨진 비상 방송 장치"],
+                },
+            },
+            current_location="숲 속",
+        )
+
+        assert context.state_changes == {
+            "location": "서울역 지하 통로",
+            "discoveries": ["깨진 비상 방송 장치"],
+        }
+
     @pytest.mark.asyncio
     async def test_generate_uses_shared_prompt_builder_and_image_service(self):
         image_service = AsyncMock()
@@ -45,6 +63,7 @@ class TestIllustrationGenerationService:
             scenario_genre="fantasy",
             scenario_name="왕국의 몰락",
             scenario_world_setting="북쪽 왕국의 성벽과 유적이 이어진다.",
+            state_changes={"discoveries": ["부서진 성문"]},
         )
 
         result = await IllustrationGenerationService.generate(
