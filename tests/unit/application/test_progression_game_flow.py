@@ -107,8 +107,8 @@ async def test_start_game_progression_initializes_game_state():
 
     saved_session = session_repo.save.call_args.args[0]
     assert saved_session.max_turns == 12
-    assert saved_session.game_state["internal_power"] == 5
-    assert saved_session.game_state["external_power"] == 10
+    assert saved_session.game_state["internal_power"] == 0
+    assert saved_session.game_state["external_power"] == 0
     assert saved_session.game_state["hp"] == 100
     assert saved_session.game_state["manuals"] == []
 
@@ -579,3 +579,97 @@ async def test_progression_replaces_zero_mastery_update_with_inferred_growth():
         ][0]["mastery_delta"]
         == 5
     )
+
+
+@pytest.mark.asyncio
+async def test_progression_hp_zero_triggers_immediate_defeat_ending():
+    user_id = get_uuid7()
+    scenario = _make_progression_scenario()
+    character = _make_character(user_id, scenario.id)
+    now = datetime.now(timezone.utc)
+    session = GameSessionEntity(
+        id=get_uuid7(),
+        user_id=user_id,
+        character_id=character.id,
+        scenario_id=scenario.id,
+        current_location=scenario.initial_location,
+        game_state={
+            "hp": 10,
+            "max_hp": 100,
+            "internal_power": 6,
+            "external_power": 4,
+            "manuals": [],
+        },
+        status=SessionStatus.ACTIVE,
+        turn_count=3,
+        max_turns=12,
+        started_at=now,
+        last_activity_at=now,
+    )
+
+    session_repo = AsyncMock()
+    session_repo.get_by_id.return_value = session
+    session_repo.save.side_effect = lambda saved: saved
+    message_repo = AsyncMock()
+    character_repo = AsyncMock()
+    character_repo.get_by_id.return_value = character
+    scenario_repo = AsyncMock()
+    scenario_repo.get_by_id.return_value = scenario
+    llm_service = AsyncMock()
+    cache_service = AsyncMock()
+    cache_service.get.return_value = None
+    embedding_service = AsyncMock()
+    image_service = AsyncMock()
+    image_service.generate_image.side_effect = [
+        "https://example.com/month4.png",
+        "https://example.com/final-board.png",
+    ]
+
+    llm_response = MagicMock()
+    llm_response.content = """
+```json
+{
+  "narrative": "무너지는 동굴벽을 피하려다 전신이 크게 찢기고, 숨이 끊어질 듯한 고통이 밀려옵니다.",
+  "options": [
+    {"label": "버티며 정신을 붙잡는다", "action_type": "progression"}
+  ],
+  "consumes_turn": true,
+  "image_focus": "붕괴하는 동굴에서 치명상을 입은 무인",
+  "state_changes": {
+    "hp_change": -15,
+    "internal_power_delta": 1
+  }
+}
+```
+"""
+    llm_response.usage.total_tokens = 70
+    llm_service.generate_response.return_value = llm_response
+
+    use_case = ProcessActionUseCase(
+        session_repository=session_repo,
+        message_repository=message_repo,
+        character_repository=character_repo,
+        scenario_repository=scenario_repo,
+        llm_service=llm_service,
+        cache_service=cache_service,
+        embedding_service=embedding_service,
+        image_service=image_service,
+    )
+
+    result = await use_case.execute(
+        user_id,
+        ProcessActionInput(
+            session_id=session.id,
+            action="한 달 동안 무너지는 동굴을 돌파하려 한다",
+            idempotency_key="progression-hp-zero-ending",
+        ),
+    )
+
+    assert result.response.ending_type == "defeat"
+    assert result.response.total_turns == 4
+    assert result.response.image_url == "https://example.com/final-board.png"
+    assert result.response.achievement_board["escaped"] is False
+
+    saved_session = session_repo.save.call_args.args[0]
+    assert saved_session.status == SessionStatus.COMPLETED
+    assert saved_session.game_state["hp"] == 0

@@ -18,8 +18,8 @@ class ProgressionStateService:
         return {
             "hp": 100,
             "max_hp": 100,
-            "internal_power": 5,
-            "external_power": 10,
+            "internal_power": 0,
+            "external_power": 0,
             "manuals": [],
             "traits": [],
             "title_candidates": [],

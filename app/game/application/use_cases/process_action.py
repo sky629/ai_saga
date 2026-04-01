@@ -436,48 +436,31 @@ class ProcessActionUseCase:
         )
         await self._message_repo.create(ai_message)
 
-        if (
+        current_hp = int(updated_session.game_state.get("hp", 0))
+        if consumes_turn and current_hp <= 0:
+            response, updated_session = await self._build_progression_ending(
+                session=updated_session,
+                character=character,
+                scenario=scenario,
+                narrative=(
+                    f"{narrative}\n\n"
+                    f"💀 {character.name}의 체력이 바닥나며 더는 "
+                    f"버티지 못하고 쓰러집니다."
+                ),
+                forced_ending=EndingType.DEFEAT,
+                existing_image_url=image_url,
+            )
+        elif (
             consumes_turn
             and updated_session.turn_count >= updated_session.max_turns
         ):
-            achievement_board = (
-                ProgressionStateService.build_achievement_board(
-                    state=updated_session.game_state,
-                    character_name=character.name,
-                    scenario_name=scenario.name,
-                    turn_count=updated_session.turn_count,
-                    max_turns=updated_session.max_turns,
-                )
-            )
-            ending_type = (
-                EndingType.VICTORY
-                if achievement_board["escaped"]
-                else EndingType.DEFEAT
-            )
-            updated_session = updated_session.complete(ending_type)
-
-            final_image_url = image_url
-            if self._image_service:
-                final_image_url = await self._image_service.generate_image(
-                    prompt=ProgressionStateService.build_final_image_prompt(
-                        achievement_board
-                    ),
-                    session_id=str(updated_session.id),
-                    user_id=str(updated_session.user_id),
-                )
-
-            ending_narrative = f"{narrative}\n\n{achievement_board['summary']}"
-            response: Union[GameActionResponse, GameEndingResponse] = (
-                GameEndingResponse(
-                    session_id=updated_session.id,
-                    ending_type=ending_type.value,
-                    narrative=ending_narrative,
-                    total_turns=updated_session.turn_count,
-                    character_name=character.name,
-                    scenario_name=scenario.name,
-                    image_url=final_image_url,
-                    achievement_board=achievement_board,
-                )
+            response, updated_session = await self._build_progression_ending(
+                session=updated_session,
+                character=character,
+                scenario=scenario,
+                narrative=narrative,
+                forced_ending=None,
+                existing_image_url=image_url,
             )
         else:
             response = GameActionResponse(
@@ -506,6 +489,62 @@ class ProcessActionUseCase:
             cache_key, response, payload_hash=payload_hash
         )
         return ProcessActionResult(response=response)
+
+    async def _build_progression_ending(
+        self,
+        session: GameSessionEntity,
+        character: CharacterEntity,
+        scenario,
+        narrative: str,
+        forced_ending: EndingType | None,
+        existing_image_url: str | None,
+    ) -> tuple[GameEndingResponse, GameSessionEntity]:
+        achievement_board = ProgressionStateService.build_achievement_board(
+            state=session.game_state,
+            character_name=character.name,
+            scenario_name=scenario.name,
+            turn_count=session.turn_count,
+            max_turns=session.max_turns,
+        )
+
+        ending_type = (
+            forced_ending
+            if forced_ending is not None
+            else (
+                EndingType.VICTORY
+                if achievement_board["escaped"]
+                else EndingType.DEFEAT
+            )
+        )
+        if forced_ending is not None:
+            achievement_board["escaped"] = False
+
+        completed_session = session.complete(ending_type)
+
+        final_image_url = existing_image_url
+        if self._image_service:
+            final_image_url = await self._image_service.generate_image(
+                prompt=ProgressionStateService.build_final_image_prompt(
+                    achievement_board
+                ),
+                session_id=str(completed_session.id),
+                user_id=str(completed_session.user_id),
+            )
+
+        ending_narrative = f"{narrative}\n\n{achievement_board['summary']}"
+        return (
+            GameEndingResponse(
+                session_id=completed_session.id,
+                ending_type=ending_type.value,
+                narrative=ending_narrative,
+                total_turns=completed_session.turn_count,
+                character_name=character.name,
+                scenario_name=scenario.name,
+                image_url=final_image_url,
+                achievement_board=achievement_board,
+            ),
+            completed_session,
+        )
 
     @staticmethod
     def _build_progression_parsed_response(
