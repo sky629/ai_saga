@@ -327,16 +327,18 @@ async def get_session(
 async def delete_session(
     session_id: UUID,
     use_case: DeleteSessionDep,
+    cache_service: CacheServiceDep,
     current_user: User = Depends(get_current_user),
 ):
     """Delete a game session."""
-    try:
-        await use_case.execute(current_user.id, session_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Session not found",
-        )
+    async with cache_service.lock(f"game:action:{session_id}", ttl_ms=20000):
+        try:
+            await use_case.execute(current_user.id, session_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found",
+            )
 
 
 @game_router_v1.post(

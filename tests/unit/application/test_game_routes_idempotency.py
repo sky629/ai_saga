@@ -10,6 +10,7 @@ from app.common.utils.datetime import get_utc_datetime
 from app.common.utils.id_generator import get_uuid7
 from app.game.presentation.routes.game_routes import (
     create_character,
+    delete_session,
     generate_illustration,
     get_session,
     start_game,
@@ -87,6 +88,28 @@ async def test_submit_action_uses_session_scoped_lock_key():
     lock_mock.assert_called_once_with(
         f"game:action:{session_id}", ttl_ms=20000
     )
+
+
+@pytest.mark.asyncio
+async def test_delete_session_uses_session_scoped_lock_key():
+    session_id = get_uuid7()
+    user_id = get_uuid7()
+    lock_mock = Mock(return_value=_noop_lock())
+    cache_service = SimpleNamespace(lock=lock_mock)
+    use_case = AsyncMock()
+
+    await delete_session(
+        session_id=session_id,
+        use_case=use_case,
+        cache_service=cache_service,  # type: ignore[arg-type]
+        current_user=SimpleNamespace(id=user_id),
+    )
+
+    lock_mock.assert_called_once_with(
+        f"game:action:{session_id}",
+        ttl_ms=20000,
+    )
+    use_case.execute.assert_called_once_with(user_id, session_id)
 
 
 @pytest.mark.asyncio
