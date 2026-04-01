@@ -30,6 +30,12 @@ from app.game.application.ports import (
 from app.game.application.services.game_memory_text_builder import (
     GameMemoryTextBuilder,
 )
+from app.game.application.services.illustration_generation_service import (
+    IllustrationGenerationService,
+)
+from app.game.application.services.progression_state_service import (
+    ProgressionStateService,
+)
 from app.game.application.services.rag_context_builder import RAGContextBuilder
 from app.game.application.services.turn_prompt_composer import (
     TurnPromptComposer,
@@ -50,6 +56,7 @@ from app.game.domain.value_objects import (
     EndingType,
     GameMemoryType,
     GameState,
+    GameType,
     MessageRole,
     SessionStatus,
     StateChanges,
@@ -67,6 +74,9 @@ from app.game.presentation.routes.schemas.response import (
 )
 from app.llm.embedding_service_interface import EmbeddingServiceInterface
 from app.llm.prompts.game_master import build_dice_result_section
+from app.llm.prompts.progression_game_master import (
+    build_progression_turn_prompt,
+)
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -179,6 +189,20 @@ class ProcessActionUseCase:
         # 3. Validate ownership and status
         self._validate_session(session, user_id)
 
+        scenario = await self._scenario_repo.get_by_id(session.scenario_id)
+        if not scenario:
+            raise ValueError("Scenario not found")
+
+        if scenario.game_type == GameType.PROGRESSION:
+            return await self._execute_progression(
+                user_id=user_id,
+                session=session,
+                scenario=scenario,
+                input_data=input_data,
+                cache_key=cache_key,
+                payload_hash=payload_hash,
+            )
+
         # 4. Advance turn (domain logic)
         session = session.advance_turn()
 
@@ -249,6 +273,7 @@ class ProcessActionUseCase:
         else:
             session, response = await self._handle_normal_turn(
                 session,
+                scenario,
                 user_id,
                 input_data.action,
                 input_data.action_type,
@@ -269,6 +294,256 @@ class ProcessActionUseCase:
         )
 
         return ProcessActionResult(response=response)
+
+    async def _execute_progression(
+        self,
+        user_id: UUID,
+        session: GameSessionEntity,
+        scenario,
+        input_data: ProcessActionInput,
+        cache_key: str,
+        payload_hash: str,
+    ) -> ProcessActionResult:
+        """progression 타입의 액션을 처리한다."""
+        character = await self._character_repo.get_by_id(session.character_id)
+        if not character:
+            raise ValueError(f"Character {session.character_id} not found")
+
+        user_message = GameMessageEntity(
+            id=get_uuid7(),
+            session_id=session.id,
+            role=MessageRole.USER,
+            content=input_data.action,
+            created_at=get_utc_datetime(),
+        )
+        await self._message_repo.create(user_message)
+
+        recent_messages = await self._message_repo.get_recent_messages(
+            session.id, limit=6
+        )
+        if not isinstance(recent_messages, list):
+            recent_messages = []
+
+        status_panel = ProgressionStateService.build_status_panel(
+            session.game_state,
+            turn_count=session.turn_count,
+            max_turns=session.max_turns,
+        )
+        system_prompt, messages = build_progression_turn_prompt(
+            scenario_name=scenario.name,
+            world_setting=scenario.world_setting,
+            character_name=character.name,
+            character_description=character.prompt_profile,
+            current_location=session.current_location,
+            turn_count=session.turn_count,
+            max_turns=session.max_turns,
+            status_panel=status_panel,
+            player_action=input_data.action,
+            conversation_history=[
+                {"role": msg.role.value, "content": msg.content}
+                for msg in recent_messages[-4:]
+                if msg.id != user_message.id
+            ],
+        )
+        llm_response = await self._llm.generate_response(
+            system_prompt=system_prompt,
+            messages=messages,
+        )
+        parsed = (
+            GameMasterService.parse_llm_response(llm_response.content) or {}
+        )
+
+        narrative = GameMasterService.extract_narrative_from_parsed(
+            parsed,
+            fallback=llm_response.content,
+        )
+        parsed = ProgressionStateService.enrich_llm_response(
+            parsed_response=parsed,
+            narrative=narrative,
+            current_state=session.game_state,
+            player_action=input_data.action,
+        )
+        consumes_turn = bool(parsed.get("consumes_turn"))
+        image_focus = str(parsed.get("image_focus") or narrative)
+
+        updated_session = session
+        if consumes_turn:
+            new_turn_count = session.turn_count + 1
+            new_state = ProgressionStateService.apply_state_changes(
+                current_state=session.game_state,
+                parsed_response=parsed,
+                turn_count=new_turn_count,
+                max_turns=session.max_turns,
+            )
+            update_payload = {
+                "turn_count": new_turn_count,
+                "game_state": new_state,
+                "last_activity_at": get_utc_datetime(),
+            }
+            next_location = parsed.get("state_changes", {}).get("location")
+            if isinstance(next_location, str) and next_location.strip():
+                update_payload["current_location"] = next_location.strip()
+            updated_session = session.model_copy(update=update_payload)
+        else:
+            updated_session = session.model_copy(
+                update={"last_activity_at": get_utc_datetime()}
+            )
+
+        updated_status_panel = ProgressionStateService.build_status_panel(
+            updated_session.game_state,
+            turn_count=updated_session.turn_count,
+            max_turns=updated_session.max_turns,
+        )
+        persisted_parsed_response = self._build_progression_parsed_response(
+            parsed=parsed,
+            narrative=narrative,
+            consumes_turn=consumes_turn,
+            status_panel=updated_status_panel,
+        )
+
+        image_url = None
+        if consumes_turn and self._image_service:
+            prompt_context = IllustrationGenerationService.build_context(
+                narrative=image_focus,
+                parsed_response=persisted_parsed_response,
+                character_name=character.name,
+                character_description=character.prompt_profile,
+                current_location=updated_session.current_location,
+                scenario_genre=scenario.genre,
+                scenario_name=scenario.name,
+                scenario_world_setting=scenario.world_setting,
+                scenario_tags=tuple(scenario.tags),
+                scenario_game_type=scenario.game_type,
+            )
+            image_url = await IllustrationGenerationService.generate(
+                image_service=self._image_service,
+                context=prompt_context,
+                session_id=str(updated_session.id),
+                user_id=str(updated_session.user_id),
+            )
+
+        ai_message = GameMessageEntity(
+            id=get_uuid7(),
+            session_id=updated_session.id,
+            role=MessageRole.ASSISTANT,
+            content=llm_response.content,
+            parsed_response=persisted_parsed_response,
+            token_count=(
+                llm_response.usage.total_tokens if llm_response.usage else None
+            ),
+            image_url=image_url,
+            created_at=get_utc_datetime(),
+        )
+        await self._message_repo.create(ai_message)
+
+        if (
+            consumes_turn
+            and updated_session.turn_count >= updated_session.max_turns
+        ):
+            achievement_board = (
+                ProgressionStateService.build_achievement_board(
+                    state=updated_session.game_state,
+                    character_name=character.name,
+                    scenario_name=scenario.name,
+                    turn_count=updated_session.turn_count,
+                    max_turns=updated_session.max_turns,
+                )
+            )
+            ending_type = (
+                EndingType.VICTORY
+                if achievement_board["escaped"]
+                else EndingType.DEFEAT
+            )
+            updated_session = updated_session.complete(ending_type)
+
+            final_image_url = image_url
+            if self._image_service:
+                final_image_url = await self._image_service.generate_image(
+                    prompt=ProgressionStateService.build_final_image_prompt(
+                        achievement_board
+                    ),
+                    session_id=str(updated_session.id),
+                    user_id=str(updated_session.user_id),
+                )
+
+            ending_narrative = f"{narrative}\n\n{achievement_board['summary']}"
+            response: Union[GameActionResponse, GameEndingResponse] = (
+                GameEndingResponse(
+                    session_id=updated_session.id,
+                    ending_type=ending_type.value,
+                    narrative=ending_narrative,
+                    total_turns=updated_session.turn_count,
+                    character_name=character.name,
+                    scenario_name=scenario.name,
+                    image_url=final_image_url,
+                    achievement_board=achievement_board,
+                )
+            )
+        else:
+            response = GameActionResponse(
+                message=GameMessageResponse(
+                    id=ai_message.id,
+                    role=ai_message.role.value,
+                    content=ai_message.content,
+                    parsed_response=ai_message.parsed_response,
+                    image_url=image_url,
+                    created_at=ai_message.created_at,
+                ),
+                narrative=narrative,
+                options=self._normalize_progression_options(
+                    parsed.get("options", [])
+                ),
+                turn_count=updated_session.turn_count,
+                max_turns=updated_session.max_turns,
+                is_ending=False,
+                image_url=image_url,
+                status_panel=updated_status_panel,
+            )
+
+        await self._session_repo.save(updated_session)
+        await self._session_repo.commit()
+        await self._cache_response(
+            cache_key, response, payload_hash=payload_hash
+        )
+        return ProcessActionResult(response=response)
+
+    @staticmethod
+    def _build_progression_parsed_response(
+        parsed: dict,
+        narrative: str,
+        consumes_turn: bool,
+        status_panel: dict,
+    ) -> dict:
+        persisted = copy.deepcopy(parsed)
+        persisted["narrative"] = narrative
+        persisted["consumes_turn"] = consumes_turn
+        persisted["status_panel"] = status_panel
+        return persisted
+
+    @staticmethod
+    def _normalize_progression_options(
+        raw_options: list[object],
+    ) -> list[ActionOptionResponse]:
+        normalized: list[ActionOptionResponse] = []
+        for option in raw_options[:5]:
+            if isinstance(option, dict):
+                label = str(option.get("label", "")).strip()
+                action_type = str(
+                    option.get("action_type") or "progression"
+                ).strip()
+            else:
+                label = str(option).strip()
+                action_type = "progression"
+            if not label:
+                continue
+            normalized.append(
+                ActionOptionResponse(
+                    label=label,
+                    action_type=action_type,
+                    requires_dice=False,
+                )
+            )
+        return normalized
 
     def _validate_session(
         self, session: GameSessionEntity, user_id: UUID
@@ -301,6 +576,7 @@ class ProcessActionUseCase:
     async def _handle_normal_turn(
         self,
         session: GameSessionEntity,
+        scenario,
         user_id: UUID,
         player_action: str,
         action_type_hint: Optional[str],
@@ -312,11 +588,6 @@ class ProcessActionUseCase:
         """일반 턴 처리."""
         # Parse current game state
         game_state = GameState.from_dict(session.game_state)
-
-        # Load scenario for difficulty context
-        scenario = await self._scenario_repo.get_by_id(session.scenario_id)
-        if not scenario:
-            raise ValueError("Scenario not found")
 
         character = await self._character_repo.get_by_id(session.character_id)
         if not character:

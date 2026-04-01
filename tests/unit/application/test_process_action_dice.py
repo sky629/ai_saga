@@ -12,6 +12,7 @@ from app.game.application.use_cases.process_action import (
 from app.game.domain.entities import CharacterEntity, CharacterStats
 from app.game.domain.value_objects import (
     ActionType,
+    GameType,
     ScenarioDifficulty,
     SessionStatus,
 )
@@ -112,6 +113,7 @@ def scenario():
         id=UUID("87654321-4321-4321-4321-cba987654321"),
         name="Test Scenario",
         description="A test scenario",
+        game_type=GameType.TRPG,
         genre="fantasy",
         difficulty=ScenarioDifficulty.NORMAL,
         max_turns=10,

@@ -16,6 +16,7 @@ from app.game.domain.entities.character import CharacterStats
 from app.game.domain.value_objects import (
     EndingType,
     GameMemoryType,
+    GameType,
     MessageRole,
     ScenarioDifficulty,
     ScenarioGenre,
@@ -122,6 +123,7 @@ class ScenarioMapper:
             description=orm.description,
             world_setting=orm.world_setting,
             initial_location=orm.initial_location,
+            game_type=GameType(orm.game_type),
             genre=ScenarioGenre(orm.genre),
             difficulty=ScenarioDifficulty(orm.difficulty),
             max_turns=orm.max_turns,

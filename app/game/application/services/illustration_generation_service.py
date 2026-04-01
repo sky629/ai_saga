@@ -39,6 +39,7 @@ class IllustrationGenerationService:
         character_name: str = "",
         character_description: str = "",
         current_location: str = "",
+        scenario_game_type: str = "",
         scenario_genre: str = "",
         scenario_name: str = "",
         scenario_world_setting: str = "",
@@ -58,6 +59,9 @@ class IllustrationGenerationService:
             character_name=character_name,
             character_description=character_description,
             current_location=current_location,
+            scenario_game_type=(
+                getattr(scenario_game_type, "value", scenario_game_type)
+            ),
             scenario_genre=getattr(scenario_genre, "value", scenario_genre),
             scenario_name=scenario_name,
             scenario_world_setting=scenario_world_setting,

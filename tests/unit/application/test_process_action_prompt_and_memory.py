@@ -15,7 +15,11 @@ from app.game.domain.entities import (
     CharacterStats,
     GameSessionEntity,
 )
-from app.game.domain.value_objects import ScenarioDifficulty, SessionStatus
+from app.game.domain.value_objects import (
+    GameType,
+    ScenarioDifficulty,
+    SessionStatus,
+)
 
 
 @pytest.mark.asyncio
@@ -61,6 +65,7 @@ class TestProcessActionPromptAndMemory:
             id=active_session.scenario_id,
             name="감옥 탈출",
             description="탈옥 시도",
+            game_type=GameType.TRPG,
             genre="fantasy",
             difficulty=ScenarioDifficulty.NORMAL,
             max_turns=10,

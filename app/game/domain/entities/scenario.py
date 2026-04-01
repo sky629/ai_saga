@@ -5,7 +5,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.game.domain.value_objects import ScenarioDifficulty, ScenarioGenre
+from app.game.domain.value_objects import (
+    GameType,
+    ScenarioDifficulty,
+    ScenarioGenre,
+)
 
 
 class ScenarioEntity(BaseModel):
@@ -22,6 +26,7 @@ class ScenarioEntity(BaseModel):
     description: str
     world_setting: str
     initial_location: str = Field(max_length=200)
+    game_type: GameType
     genre: ScenarioGenre = ScenarioGenre.FANTASY
     difficulty: ScenarioDifficulty = ScenarioDifficulty.NORMAL
     max_turns: int = Field(gt=0, default=30)

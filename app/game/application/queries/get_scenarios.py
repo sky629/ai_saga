@@ -20,6 +20,7 @@ class ScenarioListItem(BaseModel):
     id: UUID
     name: str
     description: str
+    game_type: str
     genre: str
     difficulty: str
     max_turns: int
@@ -52,6 +53,7 @@ class GetScenariosQuery:
                 id=s.id,
                 name=s.name,
                 description=s.description,
+                game_type=s.game_type.value,
                 genre=s.genre.value,
                 difficulty=s.difficulty.value,
                 max_turns=s.max_turns,

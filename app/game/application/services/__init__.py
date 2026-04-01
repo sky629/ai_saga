@@ -21,6 +21,9 @@ from app.game.application.services.illustration_scenario_profile_resolver import
 from app.game.application.services.illustration_scene_spec_builder import (
     IllustrationSceneSpecBuilder,
 )
+from app.game.application.services.progression_state_service import (
+    ProgressionStateService,
+)
 from app.game.application.services.rag_context_builder import RAGContextBuilder
 from app.game.application.services.turn_prompt_composer import (
     TurnPrompt,
@@ -37,6 +40,7 @@ __all__ = [
     "IllustrationSceneSpecBuilder",
     "IllustrationScenarioProfileResolver",
     "IllustrationVisualProfile",
+    "ProgressionStateService",
     "RAGContextBuilder",
     "TurnPrompt",
     "TurnPromptComposer",

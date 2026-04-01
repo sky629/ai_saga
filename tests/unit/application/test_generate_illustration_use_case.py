@@ -26,7 +26,7 @@ from app.game.domain.entities import (
     ScenarioEntity,
 )
 from app.game.domain.entities.character import CharacterProfile
-from app.game.domain.value_objects import MessageRole, SessionStatus
+from app.game.domain.value_objects import GameType, MessageRole, SessionStatus
 from config.settings import settings
 
 
@@ -160,6 +160,7 @@ class TestGenerateIllustrationUseCase:
                 "감염체는 소리와 움직임, 피 냄새에 민감하다."
             ),
             initial_location="숲 속",
+            game_type=GameType.TRPG,
             genre="survival",
             difficulty="normal",
             max_turns=30,
@@ -454,6 +455,7 @@ class TestGenerateIllustrationUseCase:
             description="탈출 시나리오",
             world_setting="지하 감옥과 오래된 왕국",
             initial_location="숲 속",
+            game_type=GameType.TRPG,
             genre="fantasy",
             difficulty="normal",
             max_turns=30,
@@ -520,6 +522,7 @@ class TestGenerateIllustrationUseCase:
             description="탈출 시나리오",
             world_setting="지하 감옥과 오래된 왕국",
             initial_location="숲 속",
+            game_type=GameType.TRPG,
             genre="fantasy",
             difficulty="normal",
             max_turns=30,
@@ -591,6 +594,7 @@ class TestGenerateIllustrationUseCase:
             description="탈출 시나리오",
             world_setting="지하 감옥과 오래된 왕국",
             initial_location="숲 속",
+            game_type=GameType.TRPG,
             genre="fantasy",
             difficulty="normal",
             max_turns=30,

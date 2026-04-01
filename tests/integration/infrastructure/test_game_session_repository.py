@@ -67,6 +67,7 @@ async def test_save_new_session_includes_user_id(db_session):
         description="테스트용 시나리오",
         initial_location="시작 위치",
         world_setting="테스트 세계관",
+        game_type="trpg",
     )
     db_session.add(scenario)
     await db_session.flush()  # Ensure FK references exist
@@ -145,6 +146,7 @@ async def test_save_existing_session_preserves_user_id(db_session):
         description="테스트용 시나리오",
         initial_location="시작 위치",
         world_setting="테스트 세계관",
+        game_type="trpg",
     )
     db_session.add(scenario)
     await db_session.flush()
@@ -240,6 +242,7 @@ async def test_delete_session_removes_memory_documents_before_messages(
         description="삭제 테스트용 시나리오",
         initial_location="시작 위치",
         world_setting="테스트 세계관",
+        game_type="trpg",
     )
     db_session.add(scenario)
     await db_session.flush()

@@ -63,6 +63,7 @@ class ScenarioResponse(BaseModel):
     id: UUID
     name: str
     description: str
+    game_type: str
     genre: str
     difficulty: str
     max_turns: int
@@ -194,6 +195,7 @@ class GameActionResponse(BaseModel):
     state_changes: Optional[dict] = None
     image_url: Optional[str] = None  # 삽화 이미지 URL
     dice_result: Optional[DiceResultResponse] = None
+    status_panel: Optional[dict] = None
     xp_gained: Optional[int] = None
     leveled_up: Optional[bool] = None
     new_game_level: Optional[int] = None
@@ -213,6 +215,8 @@ class GameEndingResponse(BaseModel):
     new_game_level: int = 1
     leveled_up: bool = False
     levels_gained: int = 0
+    image_url: Optional[str] = None
+    achievement_board: Optional[dict] = None
 
 
 class MessageResponse(BaseModel):

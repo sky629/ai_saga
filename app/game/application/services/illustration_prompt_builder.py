@@ -12,6 +12,7 @@ class IllustrationPromptContext:
     character_description: str = ""
     current_location: str = ""
     scenario_name: str = ""
+    scenario_game_type: str = ""
     scenario_genre: str = ""
     scenario_world_setting: str = ""
     scenario_tags: tuple[str, ...] = ()

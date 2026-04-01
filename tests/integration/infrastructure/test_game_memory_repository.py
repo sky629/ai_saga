@@ -55,6 +55,7 @@ class TestGameMemoryRepository:
             description="Test scenario description",
             world_setting="Fantasy world",
             initial_location="Starting village",
+            game_type="trpg",
             genre="fantasy",
             difficulty="normal",
         )

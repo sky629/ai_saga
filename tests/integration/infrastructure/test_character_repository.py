@@ -45,6 +45,7 @@ async def test_save_character_with_experience(db_session):
         description="테스트용 시나리오",
         initial_location="시작 위치",
         world_setting="테스트 세계관",
+        game_type="trpg",
     )
     db_session.add(scenario)
     await db_session.flush()
@@ -107,6 +108,7 @@ async def test_update_character_experience_after_level_up(db_session):
         description="테스트용 시나리오",
         initial_location="시작 위치",
         world_setting="테스트 세계관",
+        game_type="trpg",
     )
     db_session.add(scenario)
     await db_session.flush()
@@ -173,6 +175,7 @@ async def test_save_character_with_profile(db_session):
         description="테스트용 시나리오",
         initial_location="시작 위치",
         world_setting="테스트 세계관",
+        game_type="trpg",
     )
     db_session.add(scenario)
     await db_session.flush()

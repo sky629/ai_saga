@@ -42,6 +42,7 @@ async def test_update_image_url(db_session):
         description="테스트용 시나리오",
         world_setting="테스트 세계관",
         initial_location="시작 위치",
+        game_type="trpg",
     )
     db_session.add(scenario)
 
@@ -50,7 +51,9 @@ async def test_update_image_url(db_session):
         user_id=user_id,
         scenario_id=scenario_id,
         name="테스트 캐릭터",
-        description="테스트 캐릭터 설명",
+        profile={},
+        stats={"hp": 100, "max_hp": 100, "level": 1},
+        inventory=[],
     )
     db_session.add(character)
     await db_session.flush()

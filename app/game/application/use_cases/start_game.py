@@ -19,13 +19,18 @@ from app.game.application.ports import (
     LLMServiceInterface,
     ScenarioRepositoryInterface,
 )
-from app.game.application.services import IllustrationGenerationService
+from app.game.application.services import (
+    IllustrationGenerationService,
+    ProgressionStateService,
+)
 from app.game.domain.entities import GameMessageEntity, GameSessionEntity
 from app.game.domain.services import GameMasterService
-from app.game.domain.value_objects import MessageRole, SessionStatus
+from app.game.domain.value_objects import GameType, MessageRole, SessionStatus
 from app.game.presentation.routes.schemas.response import GameSessionResponse
 from app.llm.prompts.game_master import GameMasterPrompt
-from config.settings import settings
+from app.llm.prompts.progression_game_master import (
+    build_progression_opening_prompt,
+)
 
 
 class StartGameInput(BaseModel):
@@ -105,7 +110,12 @@ class StartGameUseCase:
             raise ValueError("Character already has an active session")
 
         # 4. Determine max_turns
-        max_turns = input_data.max_turns or settings.game_max_turns
+        max_turns = input_data.max_turns or scenario.max_turns
+        initial_game_state = {}
+        if scenario.game_type == GameType.PROGRESSION:
+            initial_game_state = ProgressionStateService.build_initial_state(
+                max_turns=max_turns
+            )
 
         # 5. Create session entity
         now = get_utc_datetime()
@@ -115,7 +125,7 @@ class StartGameUseCase:
             character_id=character.id,
             scenario_id=scenario.id,
             current_location=scenario.initial_location,
-            game_state={},
+            game_state=initial_game_state,
             status=SessionStatus.ACTIVE,
             turn_count=0,
             max_turns=max_turns,
@@ -164,6 +174,13 @@ class StartGameUseCase:
         scenario,  # ScenarioEntity
     ) -> Optional[str]:
         """초기 게임 내러티브 및 삽화 생성."""
+        if scenario.game_type == GameType.PROGRESSION:
+            return await self._generate_progression_initial_narrative(
+                session=session,
+                character=character,
+                scenario=scenario,
+            )
+
         prompt = GameMasterPrompt(
             scenario_name=scenario.name,
             world_setting=scenario.world_setting,
@@ -217,6 +234,89 @@ class StartGameUseCase:
             )
 
         # Save initial message with image_url
+        initial_message = GameMessageEntity(
+            id=get_uuid7(),
+            session_id=session.id,
+            role=MessageRole.ASSISTANT,
+            content=response.content,
+            parsed_response=parsed if parsed else None,
+            token_count=(
+                response.usage.total_tokens if response.usage else None
+            ),
+            image_url=initial_image_url,
+            created_at=get_utc_datetime(),
+        )
+        try:
+            await self._message_repo.create(initial_message)
+        except Exception:
+            await self._cleanup_generated_image(initial_image_url)
+            raise
+
+        return initial_image_url
+
+    async def _generate_progression_initial_narrative(
+        self,
+        session: GameSessionEntity,
+        character,
+        scenario,
+    ) -> Optional[str]:
+        """progression 타입의 오프닝 내러티브와 삽화를 생성한다."""
+        system_prompt = build_progression_opening_prompt(
+            scenario_name=scenario.name,
+            world_setting=scenario.world_setting,
+            character_name=character.name,
+            character_description=character.prompt_profile,
+            current_location=session.current_location,
+            max_turns=session.max_turns,
+        )
+        response = await self._llm.generate_response(
+            system_prompt=system_prompt,
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        "게임을 즉시 시작하고, 세계관 소개 후 첫 달에 "
+                        "선택할 수 있는 행동을 제시하세요."
+                    ),
+                }
+            ],
+        )
+        parsed = GameMasterService.parse_llm_response(response.content)
+        if isinstance(parsed, dict):
+            parsed["status_panel"] = (
+                ProgressionStateService.build_status_panel(
+                    session.game_state,
+                    turn_count=session.turn_count,
+                    max_turns=session.max_turns,
+                )
+            )
+
+        initial_image_url = None
+        if self._image_service:
+            image_narrative = response.content
+            if isinstance(parsed, dict):
+                image_narrative = str(
+                    parsed.get("image_focus") or parsed.get("narrative") or ""
+                )
+            prompt_context = IllustrationGenerationService.build_context(
+                narrative=image_narrative,
+                parsed_response=parsed,
+                character_name=character.name,
+                character_description=character.prompt_profile,
+                current_location=session.current_location,
+                scenario_genre=scenario.genre,
+                scenario_name=scenario.name,
+                scenario_world_setting=scenario.world_setting,
+                scenario_tags=tuple(scenario.tags),
+                scenario_game_type=scenario.game_type,
+            )
+            initial_image_url = await IllustrationGenerationService.generate(
+                image_service=self._image_service,
+                context=prompt_context,
+                session_id=str(session.id),
+                user_id=str(session.user_id),
+            )
+
         initial_message = GameMessageEntity(
             id=get_uuid7(),
             session_id=session.id,

@@ -9,7 +9,11 @@ from app.auth.container import AuthContainer
 from app.auth.infrastructure.persistence.models.user_models import User
 from app.common.storage.postgres import postgres_storage
 from app.common.utils.id_generator import get_uuid7
-from app.game.domain.value_objects import ScenarioDifficulty, ScenarioGenre
+from app.game.domain.value_objects import (
+    GameType,
+    ScenarioDifficulty,
+    ScenarioGenre,
+)
 from app.game.infrastructure.adapters.image_service import (
     ImageGenerationServiceAdapter,
 )
@@ -187,6 +191,7 @@ async def seed_scenarios(
 모험가 길드는 의뢰를 통해 돈과 장비, 평판을 얻을 수 있는 가장 현실적인 출발점이지만, 진실에 가까워질수록 왕실, 교단, 마법사 탑, 이종족 연맹이 각자 숨기고 있는 이해관계와 마주하게 됩니다.
 이 세계에서 검과 마법은 생존 수단일 뿐 아니라 정치와 신앙, 혈통의 증거이기도 하며, 한 번의 선택이 동료와 적, 도시와 왕국의 미래를 바꿀 수 있습니다.""",
             initial_location="하늘빛 마을 - 모험가 길드 앞",
+            game_type=GameType.TRPG.value,
             genre=ScenarioGenre.FANTASY.value,
             difficulty=ScenarioDifficulty.NORMAL.value,
             is_active=True,
@@ -213,6 +218,7 @@ async def seed_scenarios(
 이 세계에서 가장 비싼 자산은 금이나 무기가 아니라 '검증된 정보'이며, 한 번 유출된 데이터는 사람의 신분, 인간관계, 범죄 기록, 생체 인증, 나아가 인격 자체를 무너뜨릴 수 있습니다.
 AI와 인간의 경계는 이미 흐려졌고, 도시 전체가 거대한 감시 장치가 된 지금, 당신이 믿을 수 있는 것은 암호화된 백도어와 몇 안 되는 동료, 그리고 아직 팔아넘기지 않은 자신의 기억뿐입니다.""",
             initial_location="네오 서울 - 뒷골목 아지트",
+            game_type=GameType.TRPG.value,
             genre=ScenarioGenre.CYBERPUNK.value,
             difficulty=ScenarioDifficulty.HARD.value,
             is_active=True,
@@ -240,8 +246,40 @@ AI와 인간의 경계는 이미 흐려졌고, 도시 전체가 거대한 감시
 이 세계의 좀비는 소리와 움직임, 피 냄새에 민감하며 밤이 되면 더 사나워집니다.
 하지만 진짜 위협은 감염체만이 아닙니다. 폐허 속 공동체마다 각자의 규칙과 공포, 죄책감이 쌓여 있고, 누구를 구할지 누구를 버릴지에 따라 당신이 끝까지 인간으로 남을 수 있는지도 결정됩니다.""",
             initial_location="서울 외곽 - 폐건물 2층",
+            game_type=GameType.TRPG.value,
             genre=ScenarioGenre.SURVIVAL.value,
             difficulty=ScenarioDifficulty.HARD.value,
+            is_active=True,
+        ),
+        Scenario(
+            name="기연 일지",
+            description=(
+                "절벽 아래 신비한 동굴에서 12개월 동안 기연을 찾고 "
+                "무공을 연마하며, 월별 선택과 상태 누적으로 탈출과 "
+                "명성을 동시에 노리는 성장형 무협 수련기입니다."
+            ),
+            tags=["무협", "수련", "기연", "동굴", "성장"],
+            hook=(
+                "절벽 아래로 추락한 당신 앞에, 고수의 흔적이 남은 "
+                "동굴이 1년의 운명을 펼쳐 보인다."
+            ),
+            recommended_for=(
+                "월 단위 성장, 상태창 누적, 무공 수련, 최종 업적 보드 "
+                "수집형 플레이를 좋아하는 유저"
+            ),
+            thumbnail_url=DEFAULT_SCENARIO_THUMBNAIL_URL,
+            world_setting="""깊은 절벽 아래에는 오래전 천하를 떨친 절대고수가 마지막 수행을 남긴 거대한 천연 동굴이 숨어 있습니다.
+동굴 내부에는 청색 광맥, 지하 수로, 폭포수, 약초와 영과, 그리고 주인을 잃은 무림비급이 흩어져 있습니다.
+하지만 이곳은 축복과 감옥이 동시에 깃든 장소입니다. 식량과 공기는 1년을 버티기 어려울 만큼 제한적이며, 살아남으려면 매달 수련과 탐색의 방향을 냉정하게 선택해야 합니다.
+
+당신은 우연인지 운명인지 모를 추락 끝에 이 동굴에 떨어졌고, 지금부터 12개월 안에 몸과 기운, 무공의 깊이를 끌어올려 탈출할 자격을 증명해야 합니다.
+매달의 선택은 내공과 외공, 체력, 비급 숙련도, 그리고 동굴이 허락하는 기연의 흐름을 바꿉니다.
+강해지지 못하면 이곳은 무덤이 되지만, 충분한 깨달음을 쌓는다면 이 동굴은 당신에게 강호를 뒤흔들 명함 한 장을 남겨 줄 것입니다.""",
+            initial_location="절벽 아래 - 청색광이 감도는 거대 동굴",
+            game_type=GameType.PROGRESSION.value,
+            genre=ScenarioGenre.HISTORICAL.value,
+            difficulty=ScenarioDifficulty.NORMAL.value,
+            max_turns=12,
             is_active=True,
         ),
     ]

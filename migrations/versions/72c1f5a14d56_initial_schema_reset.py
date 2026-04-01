@@ -30,6 +30,7 @@ def upgrade() -> None:
         sa.Column("description", sa.Text(), nullable=False),
         sa.Column("world_setting", sa.Text(), nullable=False),
         sa.Column("initial_location", sa.String(length=200), nullable=False),
+        sa.Column("game_type", sa.String(length=30), nullable=False),
         sa.Column("genre", sa.String(length=50), nullable=False),
         sa.Column("difficulty", sa.String(length=20), nullable=False),
         sa.Column("max_turns", sa.Integer(), nullable=False),
@@ -61,6 +62,12 @@ def upgrade() -> None:
         op.f("ix_scenarios_difficulty"),
         "scenarios",
         ["difficulty"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_scenarios_game_type"),
+        "scenarios",
+        ["game_type"],
         unique=False,
     )
     op.create_index(

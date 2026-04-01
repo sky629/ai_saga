@@ -138,6 +138,7 @@ class IllustrationScenarioProfileResolver:
                 None,
                 (
                     context.scenario_name,
+                    context.scenario_game_type,
                     context.scenario_world_setting,
                     context.scenario_genre,
                     context.scene_narrative,
@@ -168,6 +169,24 @@ class IllustrationScenarioProfileResolver:
                 "Scenario anchor: dystopian near-future Seoul with cyberware, neon signage, dense infrastructure, surveillance, and corporate decay.",
             )
 
+        if any(
+            token in combined
+            for token in (
+                "무협",
+                "강호",
+                "심법",
+                "내공",
+                "외공",
+                "비급",
+                "수련",
+                "progression",
+            )
+        ):
+            return (
+                "Scenario anchor: mystical Chinese wuxia cave training ground, martial aura trails, spiritual minerals, flowing robes, and disciplined anime-style hero framing.",
+                "Visual style: Chinese wuxia animation atmosphere with a refined Japanese anime-inspired protagonist design.",
+            )
+
         if context.scenario_name:
             anchors.append(
                 "Scenario context: "
@@ -193,6 +212,7 @@ class IllustrationScenarioProfileResolver:
                 None,
                 (
                     context.scenario_name,
+                    context.scenario_game_type,
                     context.scenario_world_setting,
                     context.scene_narrative,
                     context.current_location,

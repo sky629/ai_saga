@@ -23,20 +23,26 @@ async def test_seed_scenarios_creates_detailed_seed_content():
 
     response = await seed_scenarios(db=db)
 
-    assert response.scenarios_created == 3
-    assert db.add.call_count == 3
+    assert response.scenarios_created == 4
+    assert db.add.call_count == 4
 
     seeded_scenarios = [call.args[0] for call in db.add.call_args_list]
     for scenario in seeded_scenarios:
         assert len(scenario.description) >= 80
         assert len(scenario.world_setting) >= 300
         assert len(scenario.tags) >= 4
+        assert scenario.game_type in {"trpg", "progression"}
         assert scenario.hook is not None
         assert len(scenario.hook) >= 20
         assert scenario.recommended_for is not None
         assert len(scenario.recommended_for) >= 20
         assert scenario.thumbnail_url == DEFAULT_SCENARIO_THUMBNAIL_URL
         assert "\n" in scenario.world_setting
+
+    assert any(
+        scenario.game_type == "progression" and scenario.max_turns == 12
+        for scenario in seeded_scenarios
+    )
 
 
 @pytest.mark.asyncio

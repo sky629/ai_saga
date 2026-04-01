@@ -29,6 +29,11 @@ class Scenario(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     world_setting: Mapped[str] = mapped_column(Text, nullable=False)
     initial_location: Mapped[str] = mapped_column(String(200), nullable=False)
+    game_type: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        index=True,
+    )
     genre: Mapped[str] = mapped_column(
         String(50),
         nullable=False,

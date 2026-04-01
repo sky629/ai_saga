@@ -23,7 +23,7 @@ from app.game.domain.entities import (
     CharacterStats,
 )
 from app.game.domain.entities.scenario import ScenarioEntity
-from app.game.domain.value_objects import ScenarioDifficulty
+from app.game.domain.value_objects import GameType, ScenarioDifficulty
 
 
 def _make_scenario(scenario_id: UUID) -> ScenarioEntity:
@@ -33,6 +33,7 @@ def _make_scenario(scenario_id: UUID) -> ScenarioEntity:
         description="테스트용",
         world_setting="판타지 세계",
         initial_location="마을 입구",
+        game_type=GameType.TRPG,
         difficulty=ScenarioDifficulty.NORMAL,
         max_turns=10,
         is_active=True,

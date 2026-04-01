@@ -10,7 +10,7 @@ from app.game.application.use_cases.start_game import (
 )
 from app.game.domain.entities import CharacterEntity, ScenarioEntity
 from app.game.domain.entities.character import CharacterProfile
-from app.game.domain.value_objects import MessageRole
+from app.game.domain.value_objects import GameType, MessageRole
 from config.settings import settings
 
 
@@ -102,6 +102,7 @@ async def test_start_game_success(
             "감염체는 소리와 움직임, 피 냄새에 민감하다."
         ),
         initial_location="서울 외곽 - 폐건물 2층",
+        game_type=GameType.TRPG,
         genre="survival",
         difficulty="normal",
         max_turns=30,
@@ -194,6 +195,7 @@ async def test_start_game_llm_failure_propagates_exception(
             "감염체는 소리와 움직임, 피 냄새에 민감하다."
         ),
         initial_location="서울 외곽 - 폐건물 2층",
+        game_type=GameType.TRPG,
         genre="survival",
         difficulty="normal",
         max_turns=30,
@@ -265,6 +267,7 @@ async def test_start_game_stores_parsed_response_when_llm_returns_json(
             "감염체는 소리와 움직임, 피 냄새에 민감하다."
         ),
         initial_location="서울 외곽 - 폐건물 2층",
+        game_type=GameType.TRPG,
         genre="survival",
         difficulty="normal",
         max_turns=30,
@@ -342,6 +345,7 @@ async def test_start_game_uses_character_driven_opening_prompt(
         description="Desc",
         world_setting="World",
         initial_location="하늘빛 마을 - 모험가 길드 앞",
+        game_type=GameType.TRPG,
         genre="fantasy",
         difficulty="normal",
         max_turns=30,
@@ -420,6 +424,7 @@ async def test_start_game_uses_dummy_illustration_when_feature_disabled(
             "감염체는 소리와 움직임, 피 냄새에 민감하다."
         ),
         initial_location="서울 외곽 - 폐건물 2층",
+        game_type=GameType.TRPG,
         genre="survival",
         difficulty="normal",
         max_turns=30,
@@ -503,6 +508,7 @@ async def test_start_game_cleans_up_uploaded_image_when_message_save_fails(
         description="Desc",
         world_setting="World",
         initial_location="Start",
+        game_type=GameType.TRPG,
         genre="fantasy",
         difficulty="normal",
         max_turns=30,
@@ -574,6 +580,7 @@ async def test_start_game_cleans_up_uploaded_image_when_commit_fails(
         description="Desc",
         world_setting="World",
         initial_location="Start",
+        game_type=GameType.TRPG,
         genre="fantasy",
         difficulty="normal",
         max_turns=30,

@@ -17,7 +17,7 @@ from app.game.application.use_cases.process_action import (
     ProcessActionUseCase,
 )
 from app.game.domain.entities import GameSessionEntity
-from app.game.domain.value_objects import SessionStatus
+from app.game.domain.value_objects import GameType, SessionStatus
 from app.game.presentation.routes.schemas.response import (
     GameActionResponse,
     GameEndingResponse,
@@ -374,6 +374,7 @@ class TestScenarioLoading:
             description="어두운 던전을 탐험하는 모험",
             world_setting="중세 판타지 세계",
             initial_location="던전 입구",
+            game_type=GameType.TRPG,
             genre=ScenarioGenre.FANTASY,
             difficulty=ScenarioDifficulty.NORMAL,
             max_turns=30,
@@ -653,6 +654,7 @@ class TestProcessActionSecurityAndDeathConsistency:
             description="desc",
             world_setting="world",
             initial_location="Dungeon",
+            game_type=GameType.TRPG,
             genre="fantasy",
             difficulty="normal",
             max_turns=10,
