@@ -1,5 +1,10 @@
 """Development-only routes for testing."""
 
+import copy
+import logging
+import re
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -9,6 +14,9 @@ from app.auth.container import AuthContainer
 from app.auth.infrastructure.persistence.models.user_models import User
 from app.common.storage.postgres import postgres_storage
 from app.common.utils.id_generator import get_uuid7
+from app.game.application.services.progression_state_service import (
+    ProgressionStateService,
+)
 from app.game.domain.value_objects import (
     GameType,
     ScenarioDifficulty,
@@ -17,13 +25,19 @@ from app.game.domain.value_objects import (
 from app.game.infrastructure.adapters.image_service import (
     ImageGenerationServiceAdapter,
 )
-from app.game.infrastructure.persistence.models.game_models import Scenario
+from app.game.infrastructure.persistence.models.game_models import (
+    Character,
+    GameMessage,
+    GameSession,
+    Scenario,
+)
 from config.settings import settings
 
 dev_router = APIRouter(
     prefix="/api/v1/dev",
     tags=["dev"],
 )
+logger = logging.getLogger(__name__)
 
 DEFAULT_SCENARIO_THUMBNAIL_URL = (
     "https://pub-3c25697921ae4f12aac4c4cfdbb57cc4.r2.dev/dummy.png"
@@ -142,6 +156,69 @@ class DevGenerateImageResponse(BaseModel):
     prompt: str
     session_id: str
     user_id: str
+
+
+class DevRegenerateEndingImageResponse(BaseModel):
+    """개발용 엔딩 이미지 재생성 응답."""
+
+    session_id: str
+    image_url: str
+    old_image_url: str | None = None
+    prompt: str
+    ending_type: str
+
+
+def _sanitize_prompt_text(text: str) -> str:
+    sanitized = re.sub(r"\s+", " ", text).strip()
+    sanitized = re.sub(r"[\"'`]+", "", sanitized)
+    if len(sanitized) > 220:
+        sanitized = sanitized[:220].rsplit(" ", 1)[0]
+    return sanitized
+
+
+def _is_ending_message(message: GameMessage) -> bool:
+    parsed_response = message.parsed_response
+    if not isinstance(parsed_response, dict):
+        return False
+    if isinstance(parsed_response.get("final_outcome"), dict):
+        return True
+    ending_type = parsed_response.get("ending_type")
+    return isinstance(ending_type, str) and bool(ending_type.strip())
+
+
+def _build_generic_ending_image_prompt(
+    narrative: str,
+    ending_type: str,
+    character_name: str,
+    scenario_name: str,
+    current_location: str,
+) -> str:
+    ending_tone = {
+        "victory": "victory, breakthrough, release, dawn light",
+        "defeat": "defeat, tragic stillness, exhaustion, aftermath",
+        "neutral": "neutral ending, bittersweet ambiguity, quiet threshold",
+    }.get(ending_type, "neutral ending, quiet aftermath")
+
+    character_hint = _sanitize_prompt_text(character_name) or "the protagonist"
+    scenario_hint = _sanitize_prompt_text(scenario_name) or "a fantasy tale"
+    location_hint = (
+        _sanitize_prompt_text(current_location) or "the final scene"
+    )
+    narrative_hint = _sanitize_prompt_text(narrative) or "the final aftermath"
+
+    return (
+        "vertical cinematic game ending illustration, "
+        "anime-inspired fantasy storytelling, "
+        f"{ending_tone}, "
+        f"protagonist {character_hint}, "
+        f"scenario mood {scenario_hint}, "
+        f"location {location_hint}, "
+        f"story moment {narrative_hint}, "
+        "dramatic lighting, environmental storytelling only, "
+        "No readable text, letters, words, numbers, captions, subtitles, "
+        "logos, watermarks, signage, labels, calligraphy, banners, seals, "
+        "HUDs, stat panels, menus, or UI elements anywhere in the image."
+    )
 
 
 @dev_router.post("/seed-scenarios/", response_model=SeedScenariosResponse)
@@ -332,4 +409,168 @@ async def generate_dev_image(
         prompt=request.prompt,
         session_id=session_id,
         user_id=user_id,
+    )
+
+
+@dev_router.post(
+    "/sessions/{session_id}/regenerate-ending-image/",
+    response_model=DevRegenerateEndingImageResponse,
+)
+async def regenerate_session_ending_image(
+    session_id: UUID,
+    db: AsyncSession = Depends(postgres_storage.write_db),
+):
+    """세션의 엔딩 이미지를 재생성하고 교체한다."""
+    if settings.is_prod():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This endpoint is disabled in production",
+        )
+
+    session_result = await db.execute(
+        select(GameSession).where(GameSession.id == session_id)
+    )
+    session = session_result.scalar_one_or_none()
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found",
+        )
+
+    message_result = await db.execute(
+        select(GameMessage)
+        .where(
+            GameMessage.session_id == session_id,
+            GameMessage.role == "assistant",
+        )
+        .order_by(GameMessage.created_at.desc(), GameMessage.id.desc())
+        .limit(20)
+    )
+    assistant_messages = message_result.scalars().all()
+    ending_message = next(
+        (
+            message
+            for message in assistant_messages
+            if _is_ending_message(message)
+        ),
+        None,
+    )
+
+    final_outcome = None
+    if isinstance(session.game_state, dict):
+        raw_final_outcome = session.game_state.get("final_outcome")
+        if isinstance(raw_final_outcome, dict):
+            final_outcome = copy.deepcopy(raw_final_outcome)
+
+    if final_outcome is None:
+        final_outcome = {}
+
+    if ending_message and isinstance(ending_message.parsed_response, dict):
+        message_final_outcome = ending_message.parsed_response.get(
+            "final_outcome"
+        )
+        if not final_outcome and isinstance(message_final_outcome, dict):
+            final_outcome = copy.deepcopy(message_final_outcome)
+
+    ending_type = str(
+        final_outcome.get("ending_type")
+        or session.ending_type
+        or (
+            ending_message.parsed_response.get("ending_type")
+            if ending_message
+            and isinstance(ending_message.parsed_response, dict)
+            else ""
+        )
+        or "neutral"
+    ).strip()
+    narrative = str(
+        final_outcome.get("narrative")
+        or (ending_message.content if ending_message else "")
+    ).strip()
+
+    if not narrative:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ending narrative not found for this session",
+        )
+
+    achievement_board = final_outcome.get("achievement_board")
+    if not isinstance(achievement_board, dict):
+        achievement_board = None
+
+    character_result = await db.execute(
+        select(Character).where(Character.id == session.character_id)
+    )
+    character = character_result.scalar_one_or_none()
+
+    scenario_result = await db.execute(
+        select(Scenario).where(Scenario.id == session.scenario_id)
+    )
+    scenario = scenario_result.scalar_one_or_none()
+
+    if achievement_board is not None:
+        prompt = ProgressionStateService.build_final_image_prompt(
+            achievement_board=achievement_board,
+            ending_narrative=narrative,
+        )
+    else:
+        prompt = _build_generic_ending_image_prompt(
+            narrative=narrative,
+            ending_type=ending_type,
+            character_name=character.name if character else "",
+            scenario_name=scenario.name if scenario else "",
+            current_location=session.current_location,
+        )
+
+    old_image_url = final_outcome.get("image_url") or (
+        ending_message.image_url if ending_message else None
+    )
+
+    image_service = ImageGenerationServiceAdapter()
+    image_url = await image_service.generate_image(
+        prompt=prompt,
+        session_id=str(session.id),
+        user_id=str(session.user_id),
+    )
+    if image_url is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Image generation failed",
+        )
+
+    updated_final_outcome = copy.deepcopy(final_outcome)
+    updated_final_outcome["ending_type"] = ending_type
+    updated_final_outcome["narrative"] = narrative
+    updated_final_outcome["image_url"] = image_url
+    updated_final_outcome["achievement_board"] = copy.deepcopy(
+        achievement_board
+    )
+
+    updated_game_state = copy.deepcopy(session.game_state or {})
+    updated_game_state["final_outcome"] = updated_final_outcome
+    session.game_state = updated_game_state
+
+    if ending_message is not None:
+        parsed_response = copy.deepcopy(ending_message.parsed_response or {})
+        parsed_response["ending_type"] = ending_type
+        parsed_response["narrative"] = narrative
+        parsed_response["final_outcome"] = copy.deepcopy(updated_final_outcome)
+        ending_message.parsed_response = parsed_response
+        ending_message.image_url = image_url
+
+    await db.flush()
+    await db.commit()
+
+    if old_image_url and old_image_url != image_url:
+        try:
+            await image_service.delete_image(old_image_url)
+        except Exception as exc:  # pragma: no cover - cleanup only
+            logger.warning("기존 엔딩 이미지 삭제 실패: %s", exc)
+
+    return DevRegenerateEndingImageResponse(
+        session_id=str(session.id),
+        image_url=image_url,
+        old_image_url=old_image_url,
+        prompt=prompt,
+        ending_type=ending_type,
     )
