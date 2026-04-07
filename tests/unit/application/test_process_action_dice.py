@@ -150,7 +150,7 @@ class TestDiceIntegration:
 
         # Mock LLM response
         mock_llm_response = MagicMock()
-        mock_llm_response.content = '{"narrative": "Fumble!", "options": ["Option 1"], "dice_applied": true, "state_changes": {"hp_change": 0}}'
+        mock_llm_response.content = '{"narrative": "Fumble!", "options": ["전방을 살핀다"], "dice_applied": true, "state_changes": {"hp_change": 0}}'
         mock_llm_response.usage.total_tokens = 100
         mock_repositories["llm_service"].generate_response.return_value = (
             mock_llm_response
@@ -178,9 +178,9 @@ class TestDiceIntegration:
         assert result.response.dice_result.dc == 13  # NORMAL difficulty
         assert result.response.dice_result.is_success is True
         assert result.response.dice_result.check_type == "combat"
-        assert result.response.options[0].label == "Option 1"
-        assert result.response.options[0].action_type == "exploration"
-        assert result.response.options[0].requires_dice is True
+        assert result.response.options[0].label == "전방을 살핀다"
+        assert result.response.options[0].action_type == "observation"
+        assert result.response.options[0].requires_dice is False
 
     @pytest.mark.asyncio
     async def test_critical_hit(
@@ -197,12 +197,16 @@ class TestDiceIntegration:
         mock_repositories["scenario_repository"].get_by_id.return_value = (
             scenario
         )
+        mock_repositories["image_service"] = AsyncMock()
+        mock_repositories["image_service"].generate_image.return_value = (
+            "https://example.com/death-ending.png"
+        )
         mock_repositories[
             "embedding_service"
         ].generate_embedding.return_value = [0.1, 0.2, 0.3]
 
         mock_llm_response = MagicMock()
-        mock_llm_response.content = '{"narrative": "Critical!", "options": ["Option 1"], "dice_applied": true, "state_changes": {"hp_change": 0}}'
+        mock_llm_response.content = '{"narrative": "Critical!", "options": ["전방을 살핀다"], "dice_applied": true, "state_changes": {"hp_change": 0}}'
         mock_llm_response.usage.total_tokens = 100
         mock_repositories["llm_service"].generate_response.return_value = (
             mock_llm_response
@@ -213,7 +217,14 @@ class TestDiceIntegration:
         ) as mock_randint:
             mock_randint.side_effect = [20, 5, 3]  # Roll 20, then damage dice
 
-            use_case = ProcessActionUseCase(**mock_repositories)
+            use_case = ProcessActionUseCase(
+                **{
+                    key: value
+                    for key, value in mock_repositories.items()
+                    if key != "image_service"
+                },
+                image_service=mock_repositories["image_service"],
+            )
             input_data = ProcessActionInput(
                 session_id=active_session.id,
                 action="attack",
@@ -240,12 +251,16 @@ class TestDiceIntegration:
         mock_repositories["scenario_repository"].get_by_id.return_value = (
             scenario
         )
+        mock_repositories["image_service"] = AsyncMock()
+        mock_repositories["image_service"].generate_image.return_value = (
+            "https://example.com/death-ending.png"
+        )
         mock_repositories[
             "embedding_service"
         ].generate_embedding.return_value = [0.1, 0.2, 0.3]
 
         mock_llm_response = MagicMock()
-        mock_llm_response.content = '{"narrative": "Success!", "options": ["Option 1"], "dice_applied": false, "state_changes": {"hp_change": -50}}'
+        mock_llm_response.content = '{"narrative": "Success!", "options": ["전방을 살핀다"], "dice_applied": false, "state_changes": {"hp_change": -50}}'
         mock_llm_response.usage.total_tokens = 100
         mock_repositories["llm_service"].generate_response.return_value = (
             mock_llm_response
@@ -256,7 +271,16 @@ class TestDiceIntegration:
         ) as mock_randint:
             mock_randint.return_value = 15
 
-            use_case = ProcessActionUseCase(**mock_repositories)
+            use_case = ProcessActionUseCase(
+                session_repository=mock_repositories["session_repository"],
+                message_repository=mock_repositories["message_repository"],
+                character_repository=mock_repositories["character_repository"],
+                scenario_repository=mock_repositories["scenario_repository"],
+                llm_service=mock_repositories["llm_service"],
+                cache_service=mock_repositories["cache_service"],
+                embedding_service=mock_repositories["embedding_service"],
+                image_service=mock_repositories["image_service"],
+            )
             input_data = ProcessActionInput(
                 session_id=active_session.id,
                 action="attack",
@@ -282,6 +306,10 @@ class TestDiceIntegration:
         mock_repositories["scenario_repository"].get_by_id.return_value = (
             scenario
         )
+        mock_repositories["image_service"] = AsyncMock()
+        mock_repositories["image_service"].generate_image.return_value = (
+            "https://example.com/death-ending.png"
+        )
         mock_repositories[
             "embedding_service"
         ].generate_embedding.return_value = [0.1, 0.2, 0.3]
@@ -302,7 +330,16 @@ class TestDiceIntegration:
         with patch(
             "app.game.domain.services.dice_service.random.randint"
         ) as mock_randint:
-            use_case = ProcessActionUseCase(**mock_repositories)
+            use_case = ProcessActionUseCase(
+                session_repository=mock_repositories["session_repository"],
+                message_repository=mock_repositories["message_repository"],
+                character_repository=mock_repositories["character_repository"],
+                scenario_repository=mock_repositories["scenario_repository"],
+                llm_service=mock_repositories["llm_service"],
+                cache_service=mock_repositories["cache_service"],
+                embedding_service=mock_repositories["embedding_service"],
+                image_service=mock_repositories["image_service"],
+            )
             input_data = ProcessActionInput(
                 session_id=active_session.id,
                 action="북쪽으로 이동한다",
@@ -329,6 +366,10 @@ class TestDiceIntegration:
         mock_repositories["scenario_repository"].get_by_id.return_value = (
             scenario
         )
+        mock_repositories["image_service"] = AsyncMock()
+        mock_repositories["image_service"].generate_image.return_value = (
+            "https://example.com/death-ending.png"
+        )
         mock_repositories[
             "embedding_service"
         ].generate_embedding.return_value = [0.1, 0.2, 0.3]
@@ -349,7 +390,16 @@ class TestDiceIntegration:
         with patch(
             "app.game.domain.services.dice_service.random.randint"
         ) as mock_randint:
-            use_case = ProcessActionUseCase(**mock_repositories)
+            use_case = ProcessActionUseCase(
+                session_repository=mock_repositories["session_repository"],
+                message_repository=mock_repositories["message_repository"],
+                character_repository=mock_repositories["character_repository"],
+                scenario_repository=mock_repositories["scenario_repository"],
+                llm_service=mock_repositories["llm_service"],
+                cache_service=mock_repositories["cache_service"],
+                embedding_service=mock_repositories["embedding_service"],
+                image_service=mock_repositories["image_service"],
+            )
             input_data = ProcessActionInput(
                 session_id=active_session.id,
                 action="칼을 뽑는다",
@@ -376,6 +426,10 @@ class TestDiceIntegration:
         mock_repositories["scenario_repository"].get_by_id.return_value = (
             scenario
         )
+        image_service = AsyncMock()
+        image_service.generate_image.return_value = (
+            "https://example.com/death-ending.png"
+        )
         mock_repositories[
             "embedding_service"
         ].generate_embedding.return_value = [0.1, 0.2, 0.3]
@@ -398,7 +452,16 @@ class TestDiceIntegration:
         ) as mock_randint:
             mock_randint.return_value = 15
 
-            use_case = ProcessActionUseCase(**mock_repositories)
+            use_case = ProcessActionUseCase(
+                session_repository=mock_repositories["session_repository"],
+                message_repository=mock_repositories["message_repository"],
+                character_repository=mock_repositories["character_repository"],
+                scenario_repository=mock_repositories["scenario_repository"],
+                llm_service=mock_repositories["llm_service"],
+                cache_service=mock_repositories["cache_service"],
+                embedding_service=mock_repositories["embedding_service"],
+                image_service=image_service,
+            )
             input_data = ProcessActionInput(
                 session_id=active_session.id,
                 action="고블린을 공격한다",
@@ -426,6 +489,10 @@ class TestDiceIntegration:
         mock_repositories["scenario_repository"].get_by_id.return_value = (
             scenario
         )
+        image_service = AsyncMock()
+        image_service.generate_image.return_value = (
+            "https://example.com/death-ending.png"
+        )
         mock_repositories[
             "embedding_service"
         ].generate_embedding.return_value = [0.1, 0.2, 0.3]
@@ -448,7 +515,16 @@ class TestDiceIntegration:
         ) as mock_randint:
             mock_randint.return_value = 14
 
-            use_case = ProcessActionUseCase(**mock_repositories)
+            use_case = ProcessActionUseCase(
+                session_repository=mock_repositories["session_repository"],
+                message_repository=mock_repositories["message_repository"],
+                character_repository=mock_repositories["character_repository"],
+                scenario_repository=mock_repositories["scenario_repository"],
+                llm_service=mock_repositories["llm_service"],
+                cache_service=mock_repositories["cache_service"],
+                embedding_service=mock_repositories["embedding_service"],
+                image_service=image_service,
+            )
             input_data = ProcessActionInput(
                 session_id=active_session.id,
                 action="석상을 밀어 숨겨진 통로가 있는지 본다",
@@ -475,6 +551,10 @@ class TestDiceIntegration:
         mock_repositories["scenario_repository"].get_by_id.return_value = (
             scenario
         )
+        image_service = AsyncMock()
+        image_service.generate_image.return_value = (
+            "https://example.com/death-ending.png"
+        )
         mock_repositories[
             "embedding_service"
         ].generate_embedding.return_value = [0.1, 0.2, 0.3]
@@ -497,7 +577,16 @@ class TestDiceIntegration:
         ) as mock_randint:
             mock_randint.return_value = 2
 
-            use_case = ProcessActionUseCase(**mock_repositories)
+            use_case = ProcessActionUseCase(
+                session_repository=mock_repositories["session_repository"],
+                message_repository=mock_repositories["message_repository"],
+                character_repository=mock_repositories["character_repository"],
+                scenario_repository=mock_repositories["scenario_repository"],
+                llm_service=mock_repositories["llm_service"],
+                cache_service=mock_repositories["cache_service"],
+                embedding_service=mock_repositories["embedding_service"],
+                image_service=image_service,
+            )
             input_data = ProcessActionInput(
                 session_id=active_session.id,
                 action="적에게 칼을 휘두른다",
@@ -524,6 +613,10 @@ class TestDiceIntegration:
         mock_repositories["scenario_repository"].get_by_id.return_value = (
             scenario
         )
+        image_service = AsyncMock()
+        image_service.generate_image.return_value = (
+            "https://example.com/death-ending.png"
+        )
         mock_repositories[
             "embedding_service"
         ].generate_embedding.return_value = [0.1, 0.2, 0.3]
@@ -531,7 +624,7 @@ class TestDiceIntegration:
         mock_llm_response = MagicMock()
         mock_llm_response.content = (
             '{"narrative": "테스트", '
-            '"options": ["Option 1", "Option 2"], '
+            '"options": ["전방을 살핀다", "엄폐물을 찾는다"], '
             '"dice_applied": false, '
             '"state_changes": {"hp_change": 0}}'
         )
@@ -545,7 +638,16 @@ class TestDiceIntegration:
         ) as mock_randint:
             mock_randint.return_value = 15
 
-            use_case = ProcessActionUseCase(**mock_repositories)
+            use_case = ProcessActionUseCase(
+                session_repository=mock_repositories["session_repository"],
+                message_repository=mock_repositories["message_repository"],
+                character_repository=mock_repositories["character_repository"],
+                scenario_repository=mock_repositories["scenario_repository"],
+                llm_service=mock_repositories["llm_service"],
+                cache_service=mock_repositories["cache_service"],
+                embedding_service=mock_repositories["embedding_service"],
+                image_service=image_service,
+            )
             input_data = ProcessActionInput(
                 session_id=active_session.id,
                 action="attack",
@@ -560,8 +662,16 @@ class TestDiceIntegration:
             .args[0]
         )
         assert saved_ai_message.parsed_response["options"] == [
-            "Option 1",
-            "Option 2",
+            {
+                "label": "전방을 살핀다",
+                "action_type": "observation",
+                "requires_dice": False,
+            },
+            {
+                "label": "엄폐물을 찾는다",
+                "action_type": "exploration",
+                "requires_dice": True,
+            },
         ]
 
     @pytest.mark.asyncio
@@ -585,7 +695,7 @@ class TestDiceIntegration:
         mock_llm_response = MagicMock()
         mock_llm_response.content = (
             '{"narrative": "실패했지만 큰 상처를 입습니다.", '
-            '"options": ["Option 1"], '
+            '"options": ["전방을 살핀다"], '
             '"dice_applied": true, '
             '"state_changes": {"hp_change": -5}}'
         )
@@ -639,7 +749,7 @@ class TestDiceIntegration:
         mock_llm_response = MagicMock()
         mock_llm_response.content = (
             '{"narrative": "대실패!", '
-            '"options": ["Option 1"], '
+            '"options": ["전방을 살핀다"], '
             '"dice_applied": true, '
             '"state_changes": {"hp_change": 0}}'
         )
@@ -692,7 +802,7 @@ class TestDiceIntegration:
         ].generate_embedding.return_value = [0.1, 0.2, 0.3]
 
         mock_llm_response = MagicMock()
-        mock_llm_response.content = '{"narrative": "Fumble!", "options": ["Option 1"], "dice_applied": true, "state_changes": {"hp_change": 0}}'
+        mock_llm_response.content = '{"narrative": "Fumble!", "options": ["전방을 살핀다"], "dice_applied": true, "state_changes": {"hp_change": 0}}'
         mock_llm_response.usage.total_tokens = 100
         mock_repositories["llm_service"].generate_response.return_value = (
             mock_llm_response
@@ -774,7 +884,7 @@ class TestDiceIntegration:
         ].generate_embedding.return_value = [0.1, 0.2, 0.3]
 
         mock_llm_response = MagicMock()
-        mock_llm_response.content = '{"narrative": "Fumble!", "options": ["Option 1"], "dice_applied": false, "state_changes": {"hp_change": 0}}'
+        mock_llm_response.content = '{"narrative": "Fumble!", "options": ["전방을 살핀다"], "dice_applied": false, "state_changes": {"hp_change": 0}}'
         mock_llm_response.usage.total_tokens = 100
         mock_repositories["llm_service"].generate_response.return_value = (
             mock_llm_response
@@ -818,7 +928,6 @@ class TestDiceIntegration:
             active_session
         )
 
-        # Track character state across multiple get_by_id calls
         current_character = low_hp_character
 
         async def get_character_by_id(char_id):
@@ -842,8 +951,16 @@ class TestDiceIntegration:
             "embedding_service"
         ].generate_embedding.return_value = [0.1, 0.2, 0.3]
 
+        image_service = AsyncMock()
+        image_service.generate_image.return_value = (
+            "https://example.com/death-ending.png"
+        )
+
         mock_llm_response = MagicMock()
-        mock_llm_response.content = '{"narrative": "Fumble!", "options": ["Option 1"], "dice_applied": true, "state_changes": {"hp_change": 0}}'
+        mock_llm_response.content = (
+            '{"narrative": "Fumble!", "options": ["전방을 살핀다"], '
+            '"dice_applied": true, "state_changes": {"hp_change": 0}}'
+        )
         mock_llm_response.usage.total_tokens = 100
         mock_repositories["llm_service"].generate_response.return_value = (
             mock_llm_response
@@ -854,7 +971,16 @@ class TestDiceIntegration:
         ) as mock_randint:
             mock_randint.return_value = 1  # Fumble with 1d4 damage
 
-            use_case = ProcessActionUseCase(**mock_repositories)
+            use_case = ProcessActionUseCase(
+                session_repository=mock_repositories["session_repository"],
+                message_repository=mock_repositories["message_repository"],
+                character_repository=mock_repositories["character_repository"],
+                scenario_repository=mock_repositories["scenario_repository"],
+                llm_service=mock_repositories["llm_service"],
+                cache_service=mock_repositories["cache_service"],
+                embedding_service=mock_repositories["embedding_service"],
+                image_service=image_service,
+            )
             input_data = ProcessActionInput(
                 session_id=active_session.id,
                 action="attack",
@@ -863,12 +989,27 @@ class TestDiceIntegration:
 
             result = await use_case.execute(active_session.user_id, input_data)
 
-        # Should return death ending
         assert result.response.is_ending is True
         assert (
             "사망" in result.response.narrative
             or "death" in result.response.narrative.lower()
         )
+        assert (
+            result.response.final_outcome.image_url
+            == "https://example.com/death-ending.png"
+        )
+        saved_session = (
+            mock_repositories["session_repository"]
+            .save.await_args_list[-1]
+            .args[0]
+        )
+        assert (
+            saved_session.game_state["final_outcome"]["image_url"]
+            == "https://example.com/death-ending.png"
+        )
+        death_prompt = image_service.generate_image.await_args.kwargs["prompt"]
+        assert "No readable text" in death_prompt
+        assert "HP" not in death_prompt
 
     @pytest.mark.asyncio
     async def test_dice_result_in_prompt(
@@ -890,7 +1031,7 @@ class TestDiceIntegration:
         ].generate_embedding.return_value = [0.1, 0.2, 0.3]
 
         mock_llm_response = MagicMock()
-        mock_llm_response.content = '{"narrative": "Test", "options": ["Option 1"], "state_changes": {"hp_change": 0}}'
+        mock_llm_response.content = '{"narrative": "Test", "options": ["전방을 살핀다"], "state_changes": {"hp_change": 0}}'
         mock_llm_response.usage.total_tokens = 100
         mock_repositories["llm_service"].generate_response.return_value = (
             mock_llm_response

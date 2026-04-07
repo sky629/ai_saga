@@ -8,12 +8,13 @@ import copy
 import hashlib
 import json
 import logging
-from typing import Optional, Union
+import re
+from typing import Any, Optional, Union
 from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.common.exception import Conflict
+from app.common.exception import Conflict, ServerError
 from app.common.utils.datetime import get_utc_datetime
 from app.common.utils.id_generator import get_uuid7
 from app.game.application.ports import (
@@ -75,6 +76,8 @@ from app.game.presentation.routes.schemas.response import (
 from app.llm.embedding_service_interface import EmbeddingServiceInterface
 from app.llm.prompts.game_master import build_dice_result_section
 from app.llm.prompts.progression_game_master import (
+    build_progression_ending_prompt,
+    build_progression_title_prompt,
     build_progression_turn_prompt,
 )
 from config.settings import settings
@@ -344,58 +347,140 @@ class ProcessActionUseCase:
                 for msg in recent_messages[-4:]
                 if msg.id != user_message.id
             ],
+            will_be_final_turn=(session.turn_count + 1) >= session.max_turns,
         )
-        llm_response = await self._llm.generate_response(
-            system_prompt=system_prompt,
-            messages=messages,
-        )
-        parsed = (
-            GameMasterService.parse_llm_response(llm_response.content) or {}
-        )
-
-        narrative = GameMasterService.extract_narrative_from_parsed(
-            parsed,
-            fallback=llm_response.content,
-        )
-        parsed = ProgressionStateService.enrich_llm_response(
-            parsed_response=parsed,
-            narrative=narrative,
-            current_state=session.game_state,
-            player_action=input_data.action,
-        )
-        consumes_turn = bool(parsed.get("consumes_turn"))
-        image_focus = str(parsed.get("image_focus") or narrative)
-
+        llm_response = None
+        parsed: dict[str, Any] = {}
+        narrative = ""
+        consumes_turn = False
+        response_options: list[ActionOptionResponse] = []
         updated_session = session
-        if consumes_turn:
-            new_turn_count = session.turn_count + 1
-            new_state = ProgressionStateService.apply_state_changes(
-                current_state=session.game_state,
-                parsed_response=parsed,
-                turn_count=new_turn_count,
-                max_turns=session.max_turns,
+        updated_status_panel = status_panel
+        image_focus = None
+        attempt_messages = messages
+        for attempt in range(2):
+            llm_response = await self._llm.generate_response(
+                system_prompt=system_prompt,
+                messages=attempt_messages,
             )
-            update_payload = {
-                "turn_count": new_turn_count,
-                "game_state": new_state,
-                "last_activity_at": get_utc_datetime(),
-            }
-            next_location = parsed.get("state_changes", {}).get("location")
-            if isinstance(next_location, str) and next_location.strip():
-                update_payload["current_location"] = next_location.strip()
-            updated_session = session.model_copy(update=update_payload)
-        else:
-            updated_session = session.model_copy(
-                update={"last_activity_at": get_utc_datetime()}
+            parsed = (
+                GameMasterService.parse_llm_response(llm_response.content)
+                or {}
             )
 
-        updated_status_panel = ProgressionStateService.build_status_panel(
-            updated_session.game_state,
-            turn_count=updated_session.turn_count,
-            max_turns=updated_session.max_turns,
-        )
+            narrative = GameMasterService.extract_narrative_from_parsed(
+                parsed,
+                fallback=llm_response.content,
+            )
+            parsed = ProgressionStateService.enrich_llm_response(
+                parsed_response=parsed,
+                narrative=narrative,
+                current_state=session.game_state,
+                player_action=input_data.action,
+            )
+
+            try:
+                consumes_turn = self._require_progression_consumes_turn(
+                    parsed.get("consumes_turn"),
+                    input_data.action_type,
+                )
+                self._validate_progression_state_changes(
+                    state_changes=parsed.get("state_changes"),
+                    consumes_turn=consumes_turn,
+                )
+
+                if consumes_turn:
+                    new_turn_count = session.turn_count + 1
+                    new_state = ProgressionStateService.apply_state_changes(
+                        current_state=session.game_state,
+                        parsed_response=parsed,
+                        turn_count=new_turn_count,
+                        max_turns=session.max_turns,
+                    )
+                    update_payload = {
+                        "turn_count": new_turn_count,
+                        "game_state": new_state,
+                        "last_activity_at": get_utc_datetime(),
+                    }
+                    next_location = parsed.get("state_changes", {}).get(
+                        "location"
+                    )
+                    if (
+                        isinstance(next_location, str)
+                        and next_location.strip()
+                    ):
+                        update_payload["current_location"] = (
+                            next_location.strip()
+                        )
+                    candidate_session = session.model_copy(
+                        update=update_payload
+                    )
+                else:
+                    candidate_session = session.model_copy(
+                        update={"last_activity_at": get_utc_datetime()}
+                    )
+
+                is_final_turn_response = (
+                    consumes_turn
+                    and candidate_session.turn_count
+                    >= candidate_session.max_turns
+                )
+                response_options = self._require_progression_options(
+                    parsed.get("options"),
+                    allow_empty=is_final_turn_response,
+                )
+                candidate_status_panel = (
+                    ProgressionStateService.build_status_panel(
+                        candidate_session.game_state,
+                        turn_count=candidate_session.turn_count,
+                        max_turns=candidate_session.max_turns,
+                    )
+                )
+                self._validate_progression_narrative(
+                    narrative=narrative,
+                    status_panel=candidate_status_panel,
+                )
+                candidate_image_focus = None
+                if consumes_turn and self._image_service:
+                    candidate_image_focus = (
+                        self._require_progression_image_focus(
+                            parsed.get("image_focus")
+                        )
+                    )
+            except ServerError as exc:
+                if attempt == 0:
+                    logger.warning(
+                        "Retrying malformed progression response for session %s: %s",
+                        session.id,
+                        exc,
+                    )
+                    attempt_messages = self._build_progression_repair_messages(
+                        messages=messages,
+                        previous_response=llm_response.content,
+                        error_message=str(exc),
+                        will_be_final_turn=(
+                            (session.turn_count + 1) >= session.max_turns
+                        ),
+                    )
+                    continue
+                raise
+
+            updated_session = candidate_session
+            updated_status_panel = candidate_status_panel
+            image_focus = candidate_image_focus
+            break
+
+        if llm_response is None:
+            raise ServerError(
+                message="Progression response generation failed."
+            )
+
+        parsed_for_persistence = copy.deepcopy(parsed)
+        parsed_for_persistence["options"] = [
+            option.model_dump() for option in response_options
+        ]
         persisted_parsed_response = self._build_progression_parsed_response(
-            parsed=parsed,
+            parsed=parsed_for_persistence,
             narrative=narrative,
             consumes_turn=consumes_turn,
             status_panel=updated_status_panel,
@@ -473,9 +558,7 @@ class ProcessActionUseCase:
                     created_at=ai_message.created_at,
                 ),
                 narrative=narrative,
-                options=self._normalize_progression_options(
-                    parsed.get("options", [])
-                ),
+                options=response_options,
                 turn_count=updated_session.turn_count,
                 max_turns=updated_session.max_turns,
                 is_ending=False,
@@ -517,21 +600,72 @@ class ProcessActionUseCase:
             )
         )
         if forced_ending is not None:
-            achievement_board["escaped"] = False
+            achievement_board = ProgressionStateService.apply_forced_outcome(
+                achievement_board,
+                ending_type,
+            )
+
+        achievement_board = await self._generate_progression_title(
+            scenario=scenario,
+            character=character,
+            ending_type=ending_type,
+            achievement_board=achievement_board,
+        )
 
         completed_session = session.complete(ending_type)
-
+        ending_narrative = await self._generate_progression_ending_narrative(
+            scenario=scenario,
+            character=character,
+            ending_type=ending_type,
+            achievement_board=achievement_board,
+            base_narrative=narrative,
+            cause=(
+                "hp_zero"
+                if forced_ending == EndingType.DEFEAT
+                else "turn_limit"
+            ),
+        )
         final_image_url = existing_image_url
         if self._image_service:
             final_image_url = await self._image_service.generate_image(
                 prompt=ProgressionStateService.build_final_image_prompt(
-                    achievement_board
+                    achievement_board=achievement_board,
+                    ending_narrative=ending_narrative,
                 ),
                 session_id=str(completed_session.id),
                 user_id=str(completed_session.user_id),
             )
-
-        ending_narrative = f"{narrative}\n\n{achievement_board['summary']}"
+        completed_session = completed_session.model_copy(
+            update={
+                "game_state": ProgressionStateService.store_final_outcome(
+                    state=completed_session.game_state,
+                    achievement_board=achievement_board,
+                    image_url=final_image_url,
+                    ending_narrative=ending_narrative,
+                    ending_type=ending_type.value,
+                )
+            }
+        )
+        ending_message = GameMessageEntity(
+            id=get_uuid7(),
+            session_id=completed_session.id,
+            role=MessageRole.ASSISTANT,
+            content=ending_narrative,
+            parsed_response={
+                "narrative": ending_narrative,
+                "options": [],
+                "ending_type": ending_type.value,
+                "final_outcome": {
+                    "ending_type": ending_type.value,
+                    "narrative": ending_narrative,
+                    "image_url": final_image_url,
+                    "achievement_board": achievement_board,
+                },
+            },
+            image_url=final_image_url,
+            created_at=get_utc_datetime(),
+        )
+        await self._message_repo.create(ending_message)
         return (
             GameEndingResponse(
                 session_id=completed_session.id,
@@ -540,11 +674,134 @@ class ProcessActionUseCase:
                 total_turns=completed_session.turn_count,
                 character_name=character.name,
                 scenario_name=scenario.name,
-                image_url=final_image_url,
-                achievement_board=achievement_board,
+                final_outcome={
+                    "ending_type": ending_type.value,
+                    "narrative": ending_narrative,
+                    "image_url": final_image_url,
+                    "achievement_board": achievement_board,
+                },
             ),
             completed_session,
         )
+
+    async def _generate_progression_title(
+        self,
+        scenario,
+        character: CharacterEntity,
+        ending_type: EndingType,
+        achievement_board: dict[str, Any],
+    ) -> dict[str, Any]:
+        """최종 업적 보드용 칭호를 생성하고 검증한다."""
+        fallback_title = str(achievement_board.get("title", "")).strip()
+        try:
+            response = await self._llm.generate_response(
+                system_prompt=build_progression_title_prompt(
+                    scenario_name=scenario.name,
+                    world_setting=scenario.world_setting,
+                    character_name=character.name,
+                    ending_type=ending_type.value,
+                    achievement_board=achievement_board,
+                ),
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "최종 업적 보드용 칭호와 한 줄 이유를 "
+                            "JSON으로 생성해주세요."
+                        ),
+                    }
+                ],
+            )
+            parsed = GameMasterService.parse_llm_response(response.content)
+            if not isinstance(parsed, dict):
+                return achievement_board
+
+            title = self._validate_progression_title(
+                parsed.get("title"),
+                ending_type=ending_type,
+            )
+            if not title:
+                return achievement_board
+
+            title_reason = str(parsed.get("title_reason", "")).strip()
+            return ProgressionStateService.apply_generated_title(
+                achievement_board=achievement_board,
+                title=title,
+                title_reason=title_reason,
+            )
+        except Exception:
+            logger.exception(
+                "progression final title generation failed: session=%s",
+                achievement_board.get("character_name", ""),
+            )
+            if fallback_title:
+                return achievement_board
+            return ProgressionStateService.apply_generated_title(
+                achievement_board=achievement_board,
+                title="무명수련자",
+                title_reason="최종 칭호 생성에 실패해 기본 칭호를 사용했습니다.",
+            )
+
+    @staticmethod
+    def _validate_progression_title(
+        raw_title: object,
+        ending_type: EndingType,
+    ) -> str | None:
+        """최종 칭호 형식과 금칙어를 검증한다."""
+        if not isinstance(raw_title, str):
+            return None
+        title = raw_title.strip()
+        if not title or len(title) < 2 or len(title) > 12:
+            return None
+
+        banned = (
+            ("탈출", "생환", "파천", "돌파", "절정")
+            if ending_type == EndingType.DEFEAT
+            else ("낙명", "사망", "패잔", "추락")
+        )
+        if any(keyword in title for keyword in banned):
+            return None
+        return title
+
+    async def _generate_progression_ending_narrative(
+        self,
+        scenario,
+        character: CharacterEntity,
+        ending_type: EndingType,
+        achievement_board: dict,
+        base_narrative: str,
+        cause: str,
+    ) -> str:
+        """최종 판정과 정합된 progression 엔딩 서사를 생성한다."""
+        try:
+            response = await self._llm.generate_response(
+                system_prompt=build_progression_ending_prompt(
+                    scenario_name=scenario.name,
+                    world_setting=scenario.world_setting,
+                    character_name=character.name,
+                    ending_type=ending_type.value,
+                    achievement_board=achievement_board,
+                    cause=cause,
+                ),
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "서버가 확정한 판정에 맞는 최종 엔딩만 "
+                            "서술해주세요."
+                        ),
+                    }
+                ],
+            )
+            parsed = GameMasterService.parse_llm_response(response.content)
+            if isinstance(parsed, dict):
+                return GameMasterService.extract_narrative_from_parsed(
+                    parsed,
+                    fallback=base_narrative,
+                )
+            return response.content.strip() or base_narrative
+        except Exception:
+            return base_narrative
 
     @staticmethod
     def _build_progression_parsed_response(
@@ -560,21 +817,179 @@ class ProcessActionUseCase:
         return persisted
 
     @staticmethod
-    def _normalize_progression_options(
-        raw_options: list[object],
+    def _build_progression_repair_messages(
+        messages: list[dict[str, str]],
+        previous_response: str,
+        error_message: str,
+        will_be_final_turn: bool,
+    ) -> list[dict[str, str]]:
+        """계약 위반 progression 응답에 대해 1회 재생성을 요청한다."""
+        repaired_messages = list(messages)
+        repaired_messages.append(
+            {"role": "assistant", "content": previous_response}
+        )
+        option_instruction = (
+            "이번 응답은 마지막 턴이므로 `options`는 반드시 빈 배열 `[]`로 두세요."
+            if will_be_final_turn
+            else "이번 응답은 마지막 턴이 아니므로 `options`에 1~5개의 구체적인 행동만 넣으세요."
+        )
+        repaired_messages.append(
+            {
+                "role": "user",
+                "content": (
+                    "방금 JSON 응답은 계약 위반입니다. "
+                    f"오류: {error_message} "
+                    "같은 행동에 대한 결과를 처음부터 다시 생성하세요. "
+                    "narrative에는 선택지 bullet을 넣지 말고, "
+                    f"{option_instruction} "
+                    "JSON만 출력하세요."
+                ),
+            }
+        )
+        return repaired_messages
+
+    @staticmethod
+    def _require_progression_consumes_turn(
+        raw_consumes_turn: object,
+        action_type_hint: Optional[str],
+    ) -> bool:
+        """진행형 응답의 consumes_turn 계약을 검증한다."""
+        normalized_hint = str(action_type_hint or "").strip().lower()
+        if normalized_hint == "progression":
+            if raw_consumes_turn is not True:
+                raise ServerError(
+                    message=(
+                        "Malformed progression response: "
+                        "consumes_turn must be true."
+                    )
+                )
+            return True
+        if normalized_hint == "question":
+            if raw_consumes_turn is not False:
+                raise ServerError(
+                    message=(
+                        "Malformed progression response: "
+                        "consumes_turn must be false for questions."
+                    )
+                )
+            return False
+        if not isinstance(raw_consumes_turn, bool):
+            raise ServerError(
+                message=(
+                    "Malformed progression response: "
+                    "consumes_turn must be boolean."
+                )
+            )
+        return raw_consumes_turn
+
+    @staticmethod
+    def _has_meaningful_progression_state_changes(
+        state_changes: dict[str, Any],
+    ) -> bool:
+        meaningful_numeric_fields = (
+            "hp_change",
+            "internal_power_delta",
+            "external_power_delta",
+        )
+        meaningful_list_fields = (
+            "items_gained",
+            "items_lost",
+            "npcs_met",
+            "discoveries",
+            "manuals_gained",
+            "manual_mastery_updates",
+            "traits_gained",
+            "title_candidates",
+        )
+        for field in meaningful_numeric_fields:
+            if state_changes.get(field):
+                return True
+        for field in meaningful_list_fields:
+            value = state_changes.get(field)
+            if isinstance(value, list) and value:
+                return True
+        location = state_changes.get("location")
+        return isinstance(location, str) and bool(location.strip())
+
+    @classmethod
+    def _validate_progression_state_changes(
+        cls,
+        state_changes: object,
+        consumes_turn: bool,
+    ) -> None:
+        """질문 응답의 성장 payload를 금지한다."""
+        if consumes_turn:
+            return
+        if not isinstance(state_changes, dict):
+            return
+        if cls._has_meaningful_progression_state_changes(state_changes):
+            raise ServerError(
+                message=(
+                    "Malformed progression response: "
+                    "questions must not include state changes."
+                )
+            )
+        return None
+
+    @classmethod
+    def _require_progression_options(
+        cls,
+        raw_options: object,
+        allow_empty: bool = False,
     ) -> list[ActionOptionResponse]:
+        """진행형 선택지 계약을 검증한다."""
+        if not isinstance(raw_options, list):
+            raise ServerError(
+                message=(
+                    "Malformed progression response: "
+                    "options must be a list."
+                )
+            )
+        if allow_empty:
+            if raw_options:
+                raise ServerError(
+                    message=(
+                        "Malformed progression response: "
+                        "final turn options must be an empty list."
+                    )
+                )
+            return []
+        if len(raw_options) < 1 or len(raw_options) > 5:
+            raise ServerError(
+                message=(
+                    "Malformed progression response: "
+                    "options must contain 1 to 5 entries."
+                )
+            )
+
         normalized: list[ActionOptionResponse] = []
-        for option in raw_options[:5]:
-            if isinstance(option, dict):
-                label = str(option.get("label", "")).strip()
-                action_type = str(
-                    option.get("action_type") or "progression"
-                ).strip()
-            else:
-                label = str(option).strip()
-                action_type = "progression"
-            if not label:
-                continue
+        for option in raw_options:
+            if not isinstance(option, dict):
+                raise ServerError(
+                    message=(
+                        "Malformed progression response: "
+                        "each option must be an object."
+                    )
+                )
+
+            label = str(option.get("label", "")).strip()
+            if not label or cls._is_invalid_progression_option_label(label):
+                raise ServerError(
+                    message=(
+                        "Malformed progression response: "
+                        "option labels must be concrete actions."
+                    )
+                )
+
+            action_type = str(option.get("action_type", "")).strip()
+            if action_type not in {"progression", "question"}:
+                raise ServerError(
+                    message=(
+                        "Malformed progression response: "
+                        "action_type must be progression or question."
+                    )
+                )
+
             normalized.append(
                 ActionOptionResponse(
                     label=label,
@@ -582,7 +997,103 @@ class ProcessActionUseCase:
                     requires_dice=False,
                 )
             )
+
         return normalized
+
+    @staticmethod
+    def _is_invalid_progression_option_label(label: str) -> bool:
+        normalized = " ".join(label.strip().lower().split())
+        if not normalized:
+            return True
+        generic_labels = {
+            "다음 행동",
+            "행동 선택",
+            "다음 선택",
+            "선택지",
+            "옵션",
+            "next action",
+            "choose action",
+            "action",
+        }
+        if normalized in generic_labels:
+            return True
+        if re.fullmatch(r"옵션\s*\d+", normalized):
+            return True
+        if re.fullmatch(r"option\s*\d+", normalized):
+            return True
+        return False
+
+    @classmethod
+    def _validate_progression_narrative(
+        cls,
+        narrative: str,
+        status_panel: dict[str, Any],
+    ) -> None:
+        """선택지 중복과 상태 불일치를 검증한다."""
+        for line in narrative.splitlines():
+            stripped = line.strip()
+            if re.match(r"^(?:\*|-|•|\d+\.)\s+", stripped):
+                raise ServerError(
+                    message=(
+                        "Malformed progression response: "
+                        "narrative must not include option bullets."
+                    )
+                )
+
+        manuals = status_panel.get("manuals")
+        if not isinstance(manuals, list):
+            return None
+
+        for manual in manuals:
+            if not isinstance(manual, dict):
+                continue
+            name = str(manual.get("name", "")).strip()
+            mastery = manual.get("mastery")
+            if not name or not isinstance(mastery, int):
+                continue
+
+            aliases = [name]
+            short_name = name.split(" (", 1)[0].strip()
+            if short_name and short_name not in aliases:
+                aliases.append(short_name)
+
+            for alias in aliases:
+                pattern = re.compile(
+                    rf"({re.escape(alias)}[^\n]{{0,80}}?숙련도(?:가)?\s*)"
+                    rf"(\d+)(%?)"
+                )
+                match = pattern.search(narrative)
+                if not match:
+                    continue
+                if int(match.group(2)) != mastery:
+                    raise ServerError(
+                        message=(
+                            "Malformed progression response: "
+                            "manual mastery in narrative does not match "
+                            "state changes."
+                        )
+                    )
+        return None
+
+    @staticmethod
+    def _require_progression_image_focus(raw_image_focus: object) -> str:
+        """이미지 프롬프트용 핵심 묘사를 검증한다."""
+        if not isinstance(raw_image_focus, str):
+            raise ServerError(
+                message=(
+                    "Malformed progression response: "
+                    "image_focus must be provided."
+                )
+            )
+        image_focus = re.sub(r"\s+", " ", raw_image_focus).strip()
+        if not image_focus:
+            raise ServerError(
+                message=(
+                    "Malformed progression response: "
+                    "image_focus must not be empty."
+                )
+            )
+        return image_focus[:220]
 
     def _validate_session(
         self, session: GameSessionEntity, user_id: UUID
@@ -725,6 +1236,7 @@ class ProcessActionUseCase:
             persisted_parsed_response = self._build_persisted_parsed_response(
                 parsed=parsed,
                 narrative=narrative,
+                options=options,
                 state_changes=state_changes,
                 dice_applied=dice_applied,
                 before_narrative=before_narrative,
@@ -822,8 +1334,7 @@ class ProcessActionUseCase:
                 character
             ):
                 session = session.complete(EndingType.DEFEAT)
-                await self._session_repo.save(session)
-                ending_response = await self._handle_death_ending(
+                session, ending_response = await self._handle_death_ending(
                     session,
                     character,
                     narrative,
@@ -919,6 +1430,7 @@ class ProcessActionUseCase:
     def _build_persisted_parsed_response(
         parsed: dict,
         narrative: str,
+        options: list[ActionOptionResponse],
         state_changes: StateChanges,
         dice_applied: bool,
         before_narrative: Optional[str],
@@ -926,6 +1438,7 @@ class ProcessActionUseCase:
         persisted = copy.deepcopy(parsed)
         persisted["narrative"] = narrative
         persisted["dice_applied"] = dice_applied
+        persisted["options"] = [option.model_dump() for option in options]
 
         if before_narrative:
             persisted["before_narrative"] = before_narrative
@@ -1043,6 +1556,12 @@ class ProcessActionUseCase:
             new_game_level=progression.game_level if progression else 1,
             leveled_up=progression.leveled_up if progression else False,
             levels_gained=progression.levels_gained if progression else 0,
+            final_outcome={
+                "ending_type": ending_type.value,
+                "narrative": narrative,
+                "image_url": None,
+                "achievement_board": None,
+            },
         )
 
         return session, response
@@ -1054,12 +1573,25 @@ class ProcessActionUseCase:
         narrative: str,
         recent_messages: list[GameMessageEntity],
         user_id: Optional[UUID] = None,
-    ) -> GameEndingResponse:
+    ) -> tuple[GameSessionEntity, GameEndingResponse]:
         death_narrative = (
             f"{narrative}\n\n"
             f"💀 {character.name}의 HP가 0이 되어 사망했습니다. "
             f"게임 오버."
         )
+        death_image_url = None
+        if self._image_service:
+            scenario = await self._scenario_repo.get_by_id(session.scenario_id)
+            death_image_url = await self._image_service.generate_image(
+                prompt=self._build_death_ending_image_prompt(
+                    character_name=character.name,
+                    current_location=session.current_location,
+                    death_narrative=death_narrative,
+                    scenario_name=scenario.name if scenario else "",
+                ),
+                session_id=str(session.id),
+                user_id=str(session.user_id),
+            )
 
         ending_message = GameMessageEntity(
             id=get_uuid7(),
@@ -1067,6 +1599,7 @@ class ProcessActionUseCase:
             role=MessageRole.ASSISTANT,
             content=death_narrative,
             parsed_response={"ending_type": "defeat"},
+            image_url=death_image_url,
             created_at=get_utc_datetime(),
         )
         await self._message_repo.create(ending_message)
@@ -1097,8 +1630,20 @@ class ProcessActionUseCase:
                 progression = None
 
         scenario = await self._scenario_repo.get_by_id(session.scenario_id)
-
-        return GameEndingResponse(
+        session = session.model_copy(
+            update={
+                "game_state": {
+                    **session.game_state,
+                    "final_outcome": {
+                        "ending_type": EndingType.DEFEAT.value,
+                        "narrative": death_narrative,
+                        "image_url": death_image_url,
+                        "achievement_board": None,
+                    },
+                }
+            }
+        )
+        return session, GameEndingResponse(
             session_id=session.id,
             ending_type=EndingType.DEFEAT.value,
             narrative=death_narrative,
@@ -1109,6 +1654,44 @@ class ProcessActionUseCase:
             new_game_level=progression.game_level if progression else 1,
             leveled_up=progression.leveled_up if progression else False,
             levels_gained=progression.levels_gained if progression else 0,
+            final_outcome={
+                "ending_type": EndingType.DEFEAT.value,
+                "narrative": death_narrative,
+                "image_url": death_image_url,
+                "achievement_board": None,
+            },
+        )
+
+    @staticmethod
+    def _build_death_ending_image_prompt(
+        character_name: str,
+        current_location: str,
+        death_narrative: str,
+        scenario_name: str,
+    ) -> str:
+        scene = re.sub(r"\s+", " ", death_narrative).strip()
+        scene = re.sub(r"[\"'`]+", "", scene)
+        scene = re.sub(r"\d+", "", scene)
+        scene = scene.replace("HP", "").replace("hp", "")
+        if len(scene) > 220:
+            scene = scene[:220].rsplit(" ", 1)[0]
+        location = current_location.strip() or "a hostile cavern"
+        world_hint = (
+            f"Set the scene in {scenario_name}. " if scenario_name else ""
+        )
+        return (
+            "Create a vertical tragic wuxia ending illustration. "
+            "Use a Chinese martial arts animation atmosphere with a refined "
+            "Japanese-anime-like protagonist. "
+            f"{world_hint}"
+            f"Show {character_name} collapsed in {location} after a fatal final struggle. "
+            f"Ending moment cue: {scene or 'the final exhausted silence after defeat'}. "
+            "Focus on stillness, exhaustion, broken terrain, dim cave light, "
+            "and the aftermath of defeat. "
+            "No readable text, letters, words, numbers, captions, subtitles, "
+            "logos, watermarks, signage, labels, HUDs, stat panels, "
+            "achievement boards, trading cards, menus, or UI elements "
+            "anywhere in the image."
         )
 
     async def _check_idempotency(

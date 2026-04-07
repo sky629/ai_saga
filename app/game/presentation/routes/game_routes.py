@@ -317,6 +317,7 @@ async def get_session(
         started_at=session.started_at,
         last_activity_at=session.last_activity_at,
         image_url=session.image_url,
+        final_outcome=session.final_outcome,
     )
 
 

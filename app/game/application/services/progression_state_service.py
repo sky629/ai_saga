@@ -6,6 +6,8 @@ import copy
 import re
 from typing import Any
 
+from app.game.domain.value_objects import EndingType
+
 
 class ProgressionStateService:
     """개월 기반 성장형 게임 상태를 관리한다."""
@@ -70,9 +72,11 @@ class ProgressionStateService:
         new_state = dict(current_state)
         changes = parsed_response.get("state_changes", {})
         max_hp = int(new_state.get("max_hp", 100))
-        hp = int(new_state.get("hp", 100)) + cls._bounded_int(
-            changes.get("hp_change", 0), minimum=-40, maximum=20
-        )
+        try:
+            hp_change = int(changes.get("hp_change", 0))
+        except (TypeError, ValueError):
+            hp_change = 0
+        hp = int(new_state.get("hp", 100)) + hp_change
         new_state["hp"] = max(0, min(max_hp, hp))
         new_state["max_hp"] = max_hp
 
@@ -160,6 +164,15 @@ class ProgressionStateService:
             if mastery_updates:
                 state_changes["manual_mastery_updates"] = mastery_updates
 
+        state_changes["traits_gained"] = cls._normalize_string_entries(
+            state_changes.get("traits_gained"),
+            limit=5,
+        )
+        state_changes["title_candidates"] = cls._normalize_string_entries(
+            state_changes.get("title_candidates"),
+            limit=5,
+        )
+
         return enriched
 
     @classmethod
@@ -198,6 +211,14 @@ class ProgressionStateService:
             "external_power": status_panel["external_power"],
             "manuals": manuals,
             "remaining_turns": status_panel["remaining_turns"],
+            "traits": list(state.get("traits", [])),
+            "title_candidates": list(state.get("title_candidates", [])),
+            "ending_type": (
+                EndingType.VICTORY.value
+                if escaped
+                else EndingType.DEFEAT.value
+            ),
+            "title_reason": "",
             "summary": cls._build_board_summary(
                 title=title,
                 escaped=escaped,
@@ -208,29 +229,143 @@ class ProgressionStateService:
         }
 
     @classmethod
-    def build_final_image_prompt(
-        cls, achievement_board: dict[str, Any]
-    ) -> str:
-        """최종 업적 보드용 이미지 생성 프롬프트를 만든다."""
-        manuals = achievement_board.get("manuals", [])
-        manual_names = ", ".join(
-            manual.get("name", "")
-            for manual in manuals
-            if isinstance(manual, dict) and manual.get("name")
+    def apply_forced_outcome(
+        cls,
+        achievement_board: dict[str, Any],
+        ending_type: EndingType,
+    ) -> dict[str, Any]:
+        """강제 엔딩 결과를 업적 보드에 반영한다."""
+        board = copy.deepcopy(achievement_board)
+        escaped = ending_type == EndingType.VICTORY
+        board["escaped"] = escaped
+        board["title"] = cls._resolve_title(
+            int(board.get("total_score", 0)),
+            escaped,
         )
+        board["ending_type"] = ending_type.value
+        board["summary"] = cls._build_board_summary(
+            title=board["title"],
+            escaped=escaped,
+            internal_power=int(board.get("internal_power", 0)),
+            external_power=int(board.get("external_power", 0)),
+            manuals=list(board.get("manuals", [])),
+        )
+        return board
+
+    @classmethod
+    def apply_generated_title(
+        cls,
+        achievement_board: dict[str, Any],
+        title: str,
+        title_reason: str,
+    ) -> dict[str, Any]:
+        """검증된 최종 칭호를 업적 보드에 반영한다."""
+        board = copy.deepcopy(achievement_board)
+        board["title"] = title
+        board["title_reason"] = title_reason
+        board["summary"] = cls._build_board_summary(
+            title=title,
+            escaped=bool(board.get("escaped", False)),
+            internal_power=int(board.get("internal_power", 0)),
+            external_power=int(board.get("external_power", 0)),
+            manuals=list(board.get("manuals", [])),
+        )
+        return board
+
+    @staticmethod
+    def store_final_outcome(
+        state: dict[str, Any],
+        achievement_board: dict[str, Any],
+        image_url: str | None,
+        ending_narrative: str,
+        ending_type: str,
+    ) -> dict[str, Any]:
+        """세션 상태에 최종 결과를 저장한다."""
+        new_state = copy.deepcopy(state)
+        new_state["final_outcome"] = {
+            "ending_type": ending_type,
+            "narrative": ending_narrative,
+            "image_url": image_url,
+            "achievement_board": copy.deepcopy(achievement_board),
+        }
+        return new_state
+
+    @classmethod
+    def build_final_image_prompt(
+        cls,
+        achievement_board: dict[str, Any],
+        ending_narrative: str,
+    ) -> str:
+        """텍스트 없는 엔딩 장면용 이미지 생성 프롬프트를 만든다."""
+        ending_type = str(achievement_board.get("ending_type", "")).strip()
+        manuals = achievement_board.get("manuals", [])
+        visual_energy = cls._build_final_visual_energy_hint(manuals)
+        narrative_hint = cls._sanitize_ending_image_narrative(ending_narrative)
+
+        if ending_type == EndingType.VICTORY.value:
+            outcome_direction = "victory, cave exit, release, dawn light"
+        elif ending_type == EndingType.DEFEAT.value:
+            outcome_direction = (
+                "defeat, tragic stillness, exhaustion, collapsed aftermath"
+            )
+        else:
+            outcome_direction = (
+                "neutral ending, bittersweet ambiguity, threshold"
+            )
+
         return (
-            "Create a vertical wuxia achievement-board illustration. "
-            "Use a Chinese martial arts animation atmosphere with a refined "
-            "Japanese-anime-like protagonist. Show a powerful survivor "
-            f"named {achievement_board['character_name']} standing in a "
-            "mystic cave exit, with layered aura effects, ornamental stat "
-            "panels, and trophy-card composition. "
-            f"Internal power {achievement_board['internal_power']}, "
-            f"external power {achievement_board['external_power']}, "
-            f"title {achievement_board['title']}. "
-            f"Featured manuals: {manual_names or 'none'}. "
-            "Use dramatic lighting, premium collectible-card framing, and "
-            "a polished endgame achievement mood."
+            "vertical wuxia ending illustration, "
+            "chinese martial arts animation, "
+            "refined anime hero, "
+            "lone martial artist silhouette, "
+            "cave mouth aftermath, "
+            f"{outcome_direction}, "
+            f"{visual_energy}, "
+            f"{narrative_hint}, "
+            "dramatic backlight, weathered stone, dust, wind, aura, "
+            "cinematic composition, environmental storytelling only, "
+            "No readable text, letters, words, numbers, captions, subtitles, "
+            "logos, watermarks, signage, labels, calligraphy, banners, seals, "
+            "HUDs, stat panels, achievement boards, trading cards, menus, or "
+            "UI elements anywhere in the image."
+        )
+
+    @staticmethod
+    def _sanitize_ending_image_narrative(ending_narrative: str) -> str:
+        text = re.sub(r"\s+", " ", ending_narrative).strip()
+        text = re.sub(r"[\"'`]+", "", text)
+        text = re.sub(r"\d+", "", text)
+        if len(text) > 220:
+            text = text[:220].rsplit(" ", 1)[0]
+        return text or "the final aftermath inside a mystic cave"
+
+    @classmethod
+    def _build_final_visual_energy_hint(
+        cls, manuals: list[dict[str, Any]]
+    ) -> str:
+        categories = [
+            str(manual.get("category", "")).strip().lower()
+            for manual in manuals
+            if isinstance(manual, dict)
+        ]
+        if not categories:
+            return "subtle residual cave aura and a battle-worn silhouette"
+
+        if categories.count("internal") >= categories.count("external") and (
+            categories.count("internal") >= categories.count("movement")
+        ):
+            return (
+                "calm inner-energy currents, restrained breathing, and soft "
+                "radiant qi around the body"
+            )
+        if categories.count("movement") > categories.count("external"):
+            return (
+                "swift afterimages, flowing robes, and wind-swept motion "
+                "trails around the figure"
+            )
+        return (
+            "heavy martial impact, torn stone, and a fierce lingering combat "
+            "aura around the figure"
         )
 
     @classmethod
@@ -263,7 +398,10 @@ class ProgressionStateService:
             normalized.append(
                 {
                     "name": name,
-                    "category": str(manual.get("category", "unknown")),
+                    "category": cls._normalize_manual_category(
+                        manual.get("category"),
+                        name,
+                    ),
                     "mastery": cls._bounded_int(
                         manual.get("mastery", 0), 0, 100
                     ),
@@ -289,7 +427,10 @@ class ProgressionStateService:
                 continue
             by_name[name] = {
                 "name": name,
-                "category": str(gained.get("category", "unknown")),
+                "category": cls._normalize_manual_category(
+                    gained.get("category"),
+                    name,
+                ),
                 "mastery": cls._bounded_int(gained.get("mastery", 0), 0, 30),
                 "aura": str(gained.get("aura", "neutral")),
             }
@@ -335,7 +476,10 @@ class ProgressionStateService:
             normalized.append(
                 {
                     "name": name,
-                    "category": str(gained.get("category", "unknown")),
+                    "category": cls._normalize_manual_category(
+                        gained.get("category"),
+                        name,
+                    ),
                     "mastery": cls._bounded_int(
                         gained.get("mastery", 0), 0, 30
                     )
@@ -360,9 +504,8 @@ class ProgressionStateService:
             name = str(update.get("name", "")).strip()
             if not name or name not in existing_names:
                 continue
-            mastery_delta = cls._bounded_int(
-                update.get("mastery_delta", 0), 0, 35
-            )
+            raw_delta = update.get("mastery_delta", 0)
+            mastery_delta = cls._bounded_int(raw_delta, 0, 35)
             if mastery_delta <= 0:
                 continue
             normalized.append({"name": name, "mastery_delta": mastery_delta})
@@ -452,8 +595,24 @@ class ProgressionStateService:
             return True
 
         keyword_groups = {
-            "internal": ("심법", "내공", "호흡", "좌선", "단전", "구결"),
-            "movement": ("보법", "신법", "경공", "걸음", "발놀림"),
+            "internal": (
+                "심법",
+                "신공",
+                "진기",
+                "진경",
+                "내공",
+                "호흡",
+                "좌선",
+                "단전",
+                "구결",
+            ),
+            "movement": (
+                "보법",
+                "신법",
+                "경공",
+                "걸음",
+                "발놀림",
+            ),
             "external": ("외공", "무공", "검법", "도법", "지법", "장법"),
         }
         for keyword in keyword_groups.get(category, ()):
@@ -464,7 +623,7 @@ class ProgressionStateService:
     @staticmethod
     def _extract_manual_names(text: str) -> list[str]:
         pattern = re.compile(
-            r"([가-힣A-Za-z0-9]+(?:심법|신공|보법|검법|도법|지법|장법|진법|검결)(?:\([^)]+\))?)"
+            r"([가-힣A-Za-z0-9]+(?:심법|신공|진기|진경|보법|신법|경공|검법|도법|지법|장법|진법|검결)(?:\([^)]+\))?)"
         )
         names: list[str] = []
         for match in pattern.finditer(text):
@@ -475,11 +634,50 @@ class ProgressionStateService:
 
     @staticmethod
     def _infer_manual_category(name: str) -> str:
-        if "심법" in name or "신공" in name:
+        if (
+            "심법" in name
+            or "신공" in name
+            or "진기" in name
+            or "진경" in name
+        ):
             return "internal"
-        if "보법" in name:
+        if "보법" in name or "신법" in name or "경공" in name:
             return "movement"
         return "external"
+
+    @classmethod
+    def _normalize_manual_category(
+        cls,
+        category: Any,
+        name: str,
+    ) -> str:
+        normalized = str(category or "").strip().lower()
+        if normalized and normalized != "unknown":
+            return normalized
+        return cls._infer_manual_category(name)
+
+    @staticmethod
+    def _normalize_string_entries(
+        values: Any,
+        limit: int,
+    ) -> list[str]:
+        if not isinstance(values, list):
+            return []
+
+        normalized: list[str] = []
+        for value in values[:limit]:
+            candidate = ""
+            if isinstance(value, str):
+                candidate = value.strip()
+            elif isinstance(value, dict):
+                for key in ("name", "title", "trait", "description"):
+                    raw = value.get(key)
+                    if isinstance(raw, str) and raw.strip():
+                        candidate = raw.strip()
+                        break
+            if candidate and candidate not in normalized:
+                normalized.append(candidate)
+        return normalized
 
     @staticmethod
     def _extract_manual_mastery(

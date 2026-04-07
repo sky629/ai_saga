@@ -15,6 +15,7 @@ from app.game.domain.entities.game_session import (
     GameSessionEntity,
     SessionStatus,
 )
+from app.game.domain.value_objects import ScenarioDifficulty
 
 
 @pytest.fixture
@@ -126,6 +127,9 @@ async def test_process_action_with_experience_gain(
     mock_repositories["character_repository"].get_by_id.return_value = (
         test_character
     )
+    mock_repositories["scenario_repository"].get_by_id.return_value = (
+        MagicMock(difficulty=ScenarioDifficulty.NORMAL)
+    )
     mock_repositories["cache_service"].get.return_value = (
         None  # No cached result
     )
@@ -190,9 +194,20 @@ async def test_process_action_with_experience_gain(
         == 30
     )
     assert result.response.message.parsed_response is not None
-    assert result.response.message.parsed_response["options"] == [
-        "계속 진행",
-        "휴식",
+    assert [
+        option.model_dump()
+        for option in result.response.message.parsed_response.options
+    ] == [
+        {
+            "label": "계속 진행",
+            "action_type": "exploration",
+            "requires_dice": True,
+        },
+        {
+            "label": "휴식",
+            "action_type": "rest",
+            "requires_dice": False,
+        },
     ]
 
 
@@ -221,6 +236,9 @@ async def test_process_action_with_level_up(
     )
     mock_repositories["character_repository"].get_by_id.return_value = (
         test_character_near_levelup
+    )
+    mock_repositories["scenario_repository"].get_by_id.return_value = (
+        MagicMock(difficulty=ScenarioDifficulty.NORMAL)
     )
     mock_repositories["cache_service"].get.return_value = (
         None  # No cached result

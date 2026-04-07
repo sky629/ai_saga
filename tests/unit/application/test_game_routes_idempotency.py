@@ -69,7 +69,13 @@ async def test_submit_action_uses_session_scoped_lock_key():
                 created_at=get_utc_datetime(),
             ),
             narrative="결과",
-            options=["다음"],
+            options=[
+                {
+                    "label": "다음",
+                    "action_type": "observation",
+                    "requires_dice": False,
+                }
+            ],
             turn_count=1,
             max_turns=10,
         ),
@@ -158,6 +164,7 @@ async def test_get_session_preserves_image_url_from_query_result():
         started_at=get_utc_datetime(),
         last_activity_at=get_utc_datetime(),
         image_url="https://example.com/session.png",
+        final_outcome=None,
     )
 
     response = await get_session(

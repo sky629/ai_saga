@@ -325,6 +325,12 @@ def test_game_ending_response_is_ending_default_true():
         total_turns=10,
         character_name="용사",
         scenario_name="마왕 토벌",
+        final_outcome={
+            "ending_type": "victory",
+            "narrative": "게임이 끝났습니다.",
+            "image_url": None,
+            "achievement_board": None,
+        },
     )
 
     assert response.is_ending is True
@@ -744,10 +750,15 @@ class TestProcessActionIdempotencyPayloadHash:
                 created_at=datetime.now(timezone.utc),
             ),
             narrative="결과 내러티브",
-            options=["다음 행동"],
+            options=[
+                {
+                    "label": "주변을 살핀다",
+                    "action_type": "observation",
+                    "requires_dice": False,
+                }
+            ],
             turn_count=1,
             max_turns=10,
-            session_id=session_id,
         )
 
     @pytest.fixture

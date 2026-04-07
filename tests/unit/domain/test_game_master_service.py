@@ -37,14 +37,14 @@ class TestGameMasterServiceJSONParsing:
         """Test parsing valid JSON without markdown wrapper."""
         response = """{
     "narrative": "Test narrative",
-    "options": ["Option 1"]
+    "options": ["동굴 안쪽을 살핀다"]
 }"""
 
         result = GameMasterService.parse_llm_response(response)
 
         assert result is not None
         assert result["narrative"] == "Test narrative"
-        assert result["options"] == ["Option 1"]
+        assert result["options"] == ["동굴 안쪽을 살핀다"]
 
     def test_parse_llm_response_malformed_returns_none(self):
         """Test malformed JSON returns None."""
@@ -194,11 +194,21 @@ Some extra text here"""
 
     def test_extract_options_from_parsed(self):
         """Test extracting options from parsed JSON."""
-        parsed = {"options": ["Option 1", "Option 2", "Option 3"]}
+        parsed = {
+            "options": [
+                "동굴 안쪽을 살핀다",
+                "벽면의 흔적을 조사한다",
+                "잠시 숨을 고른다",
+            ]
+        }
 
         result = GameMasterService.extract_options_from_parsed(parsed)
 
-        assert result == ["Option 1", "Option 2", "Option 3"]
+        assert result == [
+            "동굴 안쪽을 살핀다",
+            "벽면의 흔적을 조사한다",
+            "잠시 숨을 고른다",
+        ]
 
     def test_extract_options_from_parsed_missing_field(self):
         """Test extracting options returns empty list when missing."""

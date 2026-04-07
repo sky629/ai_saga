@@ -4,6 +4,7 @@
 기존 GameService.start_game()의 비즈니스 로직을 분리.
 """
 
+import copy
 from typing import Optional
 from uuid import UUID
 
@@ -25,8 +26,16 @@ from app.game.application.services import (
 )
 from app.game.domain.entities import GameMessageEntity, GameSessionEntity
 from app.game.domain.services import GameMasterService
-from app.game.domain.value_objects import GameType, MessageRole, SessionStatus
-from app.game.presentation.routes.schemas.response import GameSessionResponse
+from app.game.domain.value_objects import (
+    ActionType,
+    GameType,
+    MessageRole,
+    SessionStatus,
+)
+from app.game.presentation.routes.schemas.response import (
+    ActionOptionResponse,
+    GameSessionResponse,
+)
 from app.llm.prompts.game_master import GameMasterPrompt
 from app.llm.prompts.progression_game_master import (
     build_progression_opening_prompt,
@@ -239,7 +248,14 @@ class StartGameUseCase:
             session_id=session.id,
             role=MessageRole.ASSISTANT,
             content=response.content,
-            parsed_response=parsed if parsed else None,
+            parsed_response=(
+                self._build_canonical_start_parsed_response(
+                    parsed=parsed,
+                    is_progression=False,
+                )
+                if parsed
+                else None
+            ),
             token_count=(
                 response.usage.total_tokens if response.usage else None
             ),
@@ -283,12 +299,14 @@ class StartGameUseCase:
         )
         parsed = GameMasterService.parse_llm_response(response.content)
         if isinstance(parsed, dict):
-            parsed["status_panel"] = (
-                ProgressionStateService.build_status_panel(
+            parsed = self._build_canonical_start_parsed_response(
+                parsed=parsed,
+                is_progression=True,
+                status_panel=ProgressionStateService.build_status_panel(
                     session.game_state,
                     turn_count=session.turn_count,
                     max_turns=session.max_turns,
-                )
+                ),
             )
 
         initial_image_url = None
@@ -336,3 +354,168 @@ class StartGameUseCase:
             raise
 
         return initial_image_url
+
+    def _build_canonical_start_parsed_response(
+        self,
+        parsed: dict,
+        is_progression: bool,
+        status_panel: Optional[dict] = None,
+    ) -> dict:
+        canonical = copy.deepcopy(parsed)
+        canonical["narrative"] = (
+            GameMasterService.extract_narrative_from_parsed(
+                parsed,
+                fallback="",
+            )
+        )
+        raw_options = canonical.get("options", [])
+        if is_progression:
+            canonical["options"] = [
+                {
+                    "label": option["label"],
+                    "action_type": option["action_type"],
+                    "requires_dice": False,
+                }
+                for option in self._normalize_progression_options(raw_options)
+            ]
+            canonical["consumes_turn"] = bool(
+                canonical.get("consumes_turn", False)
+            )
+        else:
+            canonical["options"] = [
+                option.model_dump()
+                for option in self._normalize_action_options(raw_options)
+            ]
+        if status_panel is not None:
+            canonical["status_panel"] = status_panel
+        return canonical
+
+    def _normalize_action_options(
+        self, raw_options: list[object]
+    ) -> list[ActionOptionResponse]:
+        normalized_options: list[ActionOptionResponse] = []
+        for option in raw_options[:5]:
+            if isinstance(option, dict):
+                label = str(option.get("label", "")).strip()
+                action_type = str(option.get("action_type") or "").strip()
+            else:
+                label = str(option).strip()
+                action_type = ""
+
+            if not label:
+                continue
+
+            inferred_type = self._resolve_action_type(label, action_type)
+            normalized_options.append(
+                ActionOptionResponse(
+                    label=label,
+                    action_type=inferred_type.value,
+                    requires_dice=inferred_type.requires_dice,
+                )
+            )
+        return normalized_options
+
+    @staticmethod
+    def _normalize_progression_options(
+        raw_options: list[object],
+    ) -> list[dict[str, str]]:
+        normalized: list[dict[str, str]] = []
+        for option in raw_options[:5]:
+            if isinstance(option, dict):
+                label = str(option.get("label", "")).strip()
+                action_type = str(
+                    option.get("action_type") or "progression"
+                ).strip()
+            else:
+                label = str(option).strip()
+                action_type = "progression"
+            if not label:
+                continue
+            normalized.append(
+                {"label": label, "action_type": action_type or "progression"}
+            )
+        return normalized
+
+    @staticmethod
+    def _resolve_action_type(
+        action: str, action_type_hint: Optional[str] = None
+    ) -> ActionType:
+        if action_type_hint:
+            normalized_hint = action_type_hint.strip().lower()
+            if normalized_hint == ActionType.COMBAT.value:
+                return ActionType.COMBAT
+            if normalized_hint == ActionType.SOCIAL.value:
+                return ActionType.SOCIAL
+            if normalized_hint == ActionType.SKILL.value:
+                return ActionType.SKILL
+            if normalized_hint == ActionType.REST.value:
+                return ActionType.REST
+            if normalized_hint == ActionType.MOVEMENT.value:
+                return ActionType.MOVEMENT
+            if normalized_hint == ActionType.OBSERVATION.value:
+                return ActionType.OBSERVATION
+
+        normalized = action.lower().strip()
+        if any(
+            keyword in normalized
+            for keyword in (
+                "전투",
+                "공격",
+                "베기",
+                "찌르기",
+                "attack",
+                "fight",
+                "strike",
+                "hit",
+            )
+        ):
+            return ActionType.COMBAT
+        if any(
+            keyword in normalized
+            for keyword in (
+                "설득",
+                "협상",
+                "위협",
+                "persuade",
+                "negotiate",
+                "threaten",
+            )
+        ):
+            return ActionType.SOCIAL
+        if any(
+            keyword in normalized
+            for keyword in (
+                "자물쇠",
+                "함정",
+                "해킹",
+                "수리",
+                "unlock",
+                "disarm",
+                "hack",
+                "repair",
+            )
+        ):
+            return ActionType.SKILL
+        if any(
+            keyword in normalized
+            for keyword in ("휴식", "쉰", "rest", "wait", "대기")
+        ):
+            return ActionType.REST
+        if any(
+            keyword in normalized
+            for keyword in (
+                "관찰",
+                "살핀",
+                "본다",
+                "look",
+                "observe",
+                "inspect",
+            )
+        ):
+            return ActionType.OBSERVATION
+        if any(
+            keyword in normalized
+            for keyword in ("이동", "간다", "걷", "move", "walk", "go")
+        ):
+            return ActionType.MOVEMENT
+        return ActionType.EXPLORATION

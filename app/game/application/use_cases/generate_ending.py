@@ -164,4 +164,10 @@ class GenerateEndingUseCase:
             new_game_level=progression.game_level if progression else 1,
             leveled_up=progression.leveled_up if progression else False,
             levels_gained=progression.levels_gained if progression else 0,
+            final_outcome={
+                "ending_type": ending_type.value,
+                "narrative": narrative,
+                "image_url": None,
+                "achievement_board": None,
+            },
         )

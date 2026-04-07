@@ -4,13 +4,58 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.game.application.ports import (
     GameMessageRepositoryInterface,
     GameSessionRepositoryInterface,
 )
 from app.game.domain.entities import GameSessionEntity
+
+
+class ProgressionManualResult(BaseModel):
+    """Progression 비급 조회 DTO."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    category: str
+    mastery: int
+    aura: str
+
+
+class ProgressionAchievementBoardResult(BaseModel):
+    """세션 최종 업적 보드 조회 DTO."""
+
+    model_config = ConfigDict(frozen=True)
+
+    character_name: str
+    scenario_name: str
+    title: str
+    escaped: bool
+    total_score: int
+    hp: int
+    max_hp: int
+    internal_power: int
+    external_power: int
+    manuals: list[ProgressionManualResult]
+    remaining_turns: int
+    summary: str
+    traits: list[str] = Field(default_factory=list)
+    title_candidates: list[str] = Field(default_factory=list)
+    title_reason: str = ""
+    ending_type: Optional[str] = None
+
+
+class FinalOutcomeResult(BaseModel):
+    """세션 최종 결과 조회 DTO."""
+
+    model_config = ConfigDict(frozen=True)
+
+    ending_type: str
+    narrative: str
+    image_url: Optional[str] = None
+    achievement_board: Optional[ProgressionAchievementBoardResult] = None
 
 
 class SessionDetailResult(BaseModel):
@@ -30,6 +75,7 @@ class SessionDetailResult(BaseModel):
     started_at: datetime
     last_activity_at: datetime
     image_url: Optional[str] = None
+    final_outcome: Optional[FinalOutcomeResult] = None
 
 
 class GetSessionQuery:
@@ -87,6 +133,17 @@ class GetSessionQuery:
     def _to_result(
         session: GameSessionEntity, image_url: Optional[str]
     ) -> SessionDetailResult:
+        final_outcome = session.game_state.get("final_outcome")
+        resolved_final_outcome = None
+        if isinstance(final_outcome, dict):
+            resolved_final_outcome = FinalOutcomeResult.model_validate(
+                final_outcome
+            )
+        resolved_image_url = image_url
+        if resolved_final_outcome is not None:
+            final_image_url = resolved_final_outcome.image_url
+            if final_image_url and final_image_url.strip():
+                resolved_image_url = final_image_url
         return SessionDetailResult(
             id=session.id,
             character_id=session.character_id,
@@ -101,5 +158,6 @@ class GetSessionQuery:
             ),
             started_at=session.started_at,
             last_activity_at=session.last_activity_at,
-            image_url=image_url,
+            image_url=resolved_image_url,
+            final_outcome=resolved_final_outcome,
         )
