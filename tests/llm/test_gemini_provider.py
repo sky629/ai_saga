@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.common.exception import ServerError
 from app.llm.dto.llm_response import LLMResponse
 from app.llm.providers.base import LLMProvider
 from app.llm.providers.gemini import GeminiProvider
@@ -125,3 +126,33 @@ class TestGeminiProvider:
 
         # Verify Client was instantiated
         mock_genai.Client.assert_called_with(api_key="test-key")
+
+    async def test_generate_response_reraises_last_server_error(
+        self, provider, mock_genai
+    ):
+        """재시도 소진 시 RetryError 대신 사용자용 ServerError를 반환한다."""
+
+        class FakeGeminiServerError(Exception):
+            pass
+
+        mock_client = mock_genai.Client.return_value
+        mock_client.aio.models.generate_content = AsyncMock(
+            side_effect=FakeGeminiServerError(
+                "503 UNAVAILABLE. model high demand"
+            )
+        )
+
+        with patch(
+            "app.llm.providers.gemini.GeminiServerError",
+            FakeGeminiServerError,
+        ):
+            with pytest.raises(
+                ServerError,
+                match="AI 응답 생성이 일시적으로 불안정합니다.",
+            ):
+                await provider.generate_response(
+                    system_prompt="Test",
+                    messages=[{"role": "user", "content": "Hello"}],
+                )
+
+        assert mock_client.aio.models.generate_content.call_count == 3

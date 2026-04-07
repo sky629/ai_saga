@@ -10,6 +10,7 @@ import re
 from google import genai
 from google.genai import types
 from google.genai.errors import ClientError
+from google.genai.errors import ServerError as GeminiServerError
 from tenacity import (
     retry,
     retry_if_not_exception_type,
@@ -17,7 +18,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from app.common.exception import TooManyRequests
+from app.common.exception import ServerError, TooManyRequests
 from app.llm.dto.llm_response import LLMResponse, TokenUsage
 from app.llm.providers.base import LLMProvider
 
@@ -70,6 +71,7 @@ class GeminiProvider(LLMProvider):
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
         retry=retry_if_not_exception_type((ValueError, TooManyRequests)),
+        reraise=True,
     )
     async def generate_response(
         self,
@@ -116,6 +118,17 @@ class GeminiProvider(LLMProvider):
                     retry_after_seconds=_extract_retry_after_seconds(e),
                 )
             raise e
+        except GeminiServerError as e:
+            logger.error(
+                "Gemini server error while generating response: %s",
+                e,
+                exc_info=True,
+            )
+            raise ServerError(
+                message=(
+                    "AI 응답 생성이 일시적으로 불안정합니다. 잠시 후 다시 시도해 주세요."
+                )
+            ) from e
         except Exception as e:
             logger.error(f"DEBUG: Gemini API Error: {e}", exc_info=True)
             raise e

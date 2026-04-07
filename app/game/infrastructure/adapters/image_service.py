@@ -17,6 +17,7 @@ from app.game.application.ports import ImageGenerationServiceInterface
 from config.settings import settings
 
 logger = logging.getLogger("uvicorn")
+GLOBAL_IMAGE_STYLE_PROMPT = "ghibli style"
 
 
 class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
@@ -65,7 +66,9 @@ class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
                 return await self._generate_dummy_image(prompt)
 
             # 1. 이미지 데이터 생성
-            image_data = await self._generate_google_imagen(prompt)
+            image_data = await self._generate_google_imagen(
+                self._apply_global_style(prompt)
+            )
 
             # 이미지 데이터 검증
             if not image_data:
@@ -104,6 +107,13 @@ class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
             # 이미지 생성 실패 시 게임 진행에 방해되지 않도록 None 반환
             logger.error(f"Image generation failed: {e}")
             return None
+
+    @staticmethod
+    def _apply_global_style(prompt: str) -> str:
+        """모든 이미지 생성 프롬프트에 공통 스타일 힌트를 추가한다."""
+        if GLOBAL_IMAGE_STYLE_PROMPT.lower() in prompt.lower():
+            return prompt
+        return f"{GLOBAL_IMAGE_STYLE_PROMPT}, {prompt}"
 
     async def delete_image(self, image_url: str) -> None:
         """업로드된 이미지를 삭제한다."""

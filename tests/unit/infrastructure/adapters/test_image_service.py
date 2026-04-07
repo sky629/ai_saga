@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.game.infrastructure.adapters.image_service import (
+    GLOBAL_IMAGE_STYLE_PROMPT,
     ImageGenerationServiceAdapter,
 )
 from config.settings import settings
@@ -67,7 +68,9 @@ async def test_generates_real_image_when_generation_enabled_in_local(
 
     assert image_url is not None
     assert image_url.startswith("https://cdn.example.com/user-1/session-1/")
-    adapter._generate_google_imagen.assert_called_once_with("pixel art hero")
+    adapter._generate_google_imagen.assert_called_once_with(
+        f"{GLOBAL_IMAGE_STYLE_PROMPT}, pixel art hero"
+    )
     mock_boto_client.return_value.put_object.assert_called_once()
     put_kwargs = mock_boto_client.return_value.put_object.call_args.kwargs
     assert "ACL" not in put_kwargs
@@ -114,6 +117,17 @@ async def test_generate_images_uses_square_aspect_ratio(
     config = generate_kwargs["config"]
     assert config.aspect_ratio == "1:1"
     mock_boto_client.return_value.put_object.assert_called_once()
+
+
+def test_apply_global_style_adds_ghibli_prefix_once():
+    """전역 스타일 힌트는 한 번만 붙어야 한다."""
+    prompt = ImageGenerationServiceAdapter._apply_global_style("hero portrait")
+    assert prompt == f"{GLOBAL_IMAGE_STYLE_PROMPT}, hero portrait"
+
+    duplicated = ImageGenerationServiceAdapter._apply_global_style(
+        f"{GLOBAL_IMAGE_STYLE_PROMPT}, hero portrait"
+    )
+    assert duplicated == f"{GLOBAL_IMAGE_STYLE_PROMPT}, hero portrait"
 
 
 def test_uses_generic_object_storage_settings_for_boto_client(monkeypatch):
