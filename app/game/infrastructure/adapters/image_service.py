@@ -17,7 +17,14 @@ from app.game.application.ports import ImageGenerationServiceInterface
 from config.settings import settings
 
 logger = logging.getLogger("uvicorn")
-GLOBAL_IMAGE_STYLE_PROMPT = "ghibli style"
+GLOBAL_IMAGE_STYLE_PROMPT = "cinematic illustration"
+GLOBAL_IMAGE_LAYOUT_PROMPT = (
+    "single full-bleed illustration, edge-to-edge composition, "
+    "borderless artwork, no blank white margins, no empty padding, "
+    "no comic panels, no panel gutters, no speech bubbles, "
+    "no dialogue balloons, no captions"
+)
+DEFAULT_IMAGE_ASPECT_RATIO = "3:4"
 
 
 class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
@@ -111,9 +118,19 @@ class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
     @staticmethod
     def _apply_global_style(prompt: str) -> str:
         """모든 이미지 생성 프롬프트에 공통 스타일 힌트를 추가한다."""
-        if GLOBAL_IMAGE_STYLE_PROMPT.lower() in prompt.lower():
+        normalized_prompt = prompt.lower()
+        prefix_parts: list[str] = []
+
+        if GLOBAL_IMAGE_STYLE_PROMPT.lower() not in normalized_prompt:
+            prefix_parts.append(GLOBAL_IMAGE_STYLE_PROMPT)
+
+        if "no speech bubbles" not in normalized_prompt:
+            prefix_parts.append(GLOBAL_IMAGE_LAYOUT_PROMPT)
+
+        if not prefix_parts:
             return prompt
-        return f"{GLOBAL_IMAGE_STYLE_PROMPT}, {prompt}"
+
+        return f"{', '.join(prefix_parts)}, {prompt}"
 
     async def delete_image(self, image_url: str) -> None:
         """업로드된 이미지를 삭제한다."""
@@ -146,6 +163,9 @@ class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
                         contents=prompt,
                         config=types.GenerateContentConfig(
                             response_modalities=["IMAGE"],
+                            image_config=types.ImageConfig(
+                                aspect_ratio=DEFAULT_IMAGE_ASPECT_RATIO,
+                            ),
                         ),
                     )
                 )
@@ -163,7 +183,7 @@ class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
                     prompt=prompt,
                     config=types.GenerateImagesConfig(
                         number_of_images=1,
-                        aspect_ratio="1:1",
+                        aspect_ratio=DEFAULT_IMAGE_ASPECT_RATIO,
                         output_mime_type="image/png",
                     ),
                 )

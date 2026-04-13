@@ -8,6 +8,18 @@ from app.game.application.services.progression_state_service import (
 class TestProgressionStateService:
     """엔딩 장면 프롬프트 규칙을 검증한다."""
 
+    def test_extract_manual_names_supports_shinjang_suffix(self):
+        names = ProgressionStateService._extract_manual_names(
+            "그대는 바위 틈새에서 벽영신장의 비급 조각을 발견했다."
+        )
+
+        assert "벽영신장" in names
+
+    def test_infer_manual_category_treats_shinjang_as_external(self):
+        category = ProgressionStateService._infer_manual_category("벽영신장")
+
+        assert category == "external"
+
     def test_build_final_image_prompt_excludes_textual_board_elements(self):
         achievement_board = {
             "character_name": "연우",

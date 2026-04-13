@@ -780,6 +780,98 @@ async def test_progression_infers_manual_gain_from_narrative_when_missing_state_
 
 
 @pytest.mark.asyncio
+async def test_progression_infers_shinjang_manual_from_narrative():
+    user_id = get_uuid7()
+    scenario = _make_progression_scenario()
+    character = _make_character(user_id, scenario.id)
+    now = datetime.now(timezone.utc)
+    session = GameSessionEntity(
+        id=get_uuid7(),
+        user_id=user_id,
+        character_id=character.id,
+        scenario_id=scenario.id,
+        current_location=scenario.initial_location,
+        game_state={
+            "hp": 100,
+            "internal_power": 5,
+            "external_power": 10,
+            "manuals": [],
+        },
+        status=SessionStatus.ACTIVE,
+        turn_count=0,
+        max_turns=12,
+        started_at=now,
+        last_activity_at=now,
+    )
+
+    session_repo = AsyncMock()
+    session_repo.get_by_id.return_value = session
+    session_repo.save.side_effect = lambda saved: saved
+    message_repo = AsyncMock()
+    character_repo = AsyncMock()
+    character_repo.get_by_id.return_value = character
+    scenario_repo = AsyncMock()
+    scenario_repo.get_by_id.return_value = scenario
+    llm_service = AsyncMock()
+    cache_service = AsyncMock()
+    cache_service.get.return_value = None
+    embedding_service = AsyncMock()
+
+    llm_response = MagicMock()
+    llm_response.content = """
+```json
+{
+  "narrative": "그대는 절벽 벽면의 갈라진 틈 사이에서 벽영신장의 구결이 적힌 낡은 비급을 손에 넣었다.",
+  "options": [
+    {"label": "벽영신장의 초식을 익혀 본다", "action_type": "progression"}
+  ],
+  "consumes_turn": true,
+  "state_changes": {
+    "internal_power_delta": 1,
+    "external_power_delta": 3
+  }
+}
+```
+"""
+    llm_response.usage.total_tokens = 60
+    llm_service.generate_response.return_value = llm_response
+
+    use_case = ProcessActionUseCase(
+        session_repository=session_repo,
+        message_repository=message_repo,
+        character_repository=character_repo,
+        scenario_repository=scenario_repo,
+        llm_service=llm_service,
+        cache_service=cache_service,
+        embedding_service=embedding_service,
+    )
+
+    result = await use_case.execute(
+        user_id,
+        ProcessActionInput(
+            session_id=session.id,
+            action="한 달 동안 절벽 벽면의 숨겨진 틈을 탐색한다",
+            idempotency_key="progression-shinjang-inference",
+        ),
+    )
+
+    assert result.response.status_panel.manuals[0].name == "벽영신장"
+    assert result.response.status_panel.manuals[0].category == "external"
+
+    saved_session = session_repo.save.call_args.args[0]
+    assert saved_session.game_state["manuals"][0]["name"] == "벽영신장"
+    assert saved_session.game_state["manuals"][0]["category"] == "external"
+
+    created_message = message_repo.create.call_args_list[-1].args[0]
+    assert (
+        created_message.parsed_response["state_changes"]["manuals_gained"][0][
+            "name"
+        ]
+        == "벽영신장"
+    )
+
+
+@pytest.mark.asyncio
 async def test_progression_updates_internal_manual_mastery_from_training_intent():
     user_id = get_uuid7()
     scenario = _make_progression_scenario()

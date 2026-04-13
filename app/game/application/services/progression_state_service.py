@@ -613,7 +613,15 @@ class ProgressionStateService:
                 "걸음",
                 "발놀림",
             ),
-            "external": ("외공", "무공", "검법", "도법", "지법", "장법"),
+            "external": (
+                "외공",
+                "무공",
+                "검법",
+                "도법",
+                "지법",
+                "장법",
+                "신장",
+            ),
         }
         for keyword in keyword_groups.get(category, ()):
             if keyword in combined_text:
@@ -623,7 +631,7 @@ class ProgressionStateService:
     @staticmethod
     def _extract_manual_names(text: str) -> list[str]:
         pattern = re.compile(
-            r"([가-힣A-Za-z0-9]+(?:심법|신공|진기|진경|보법|신법|경공|검법|도법|지법|장법|진법|검결)(?:\([^)]+\))?)"
+            r"([가-힣A-Za-z0-9]+(?:심법|신공|진기|진경|보법|신법|경공|검법|도법|지법|장법|신장|진법|검결)(?:\([^)]+\))?)"
         )
         names: list[str] = []
         for match in pattern.finditer(text):
