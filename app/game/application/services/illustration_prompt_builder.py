@@ -61,6 +61,23 @@ class IllustrationPromptBuilder:
             return value
         return f"{value}."
 
+    @staticmethod
+    def _sanitize_character_description(value: object) -> str:
+        """이미지 프롬프트에서 이름 라인을 제외한 캐릭터 설명만 남긴다."""
+        if not isinstance(value, str):
+            return ""
+
+        filtered_lines: list[str] = []
+        for line in value.splitlines():
+            normalized = line.strip()
+            if not normalized:
+                continue
+            if "이름:" in normalized:
+                continue
+            filtered_lines.append(normalized)
+
+        return " ".join(filtered_lines)
+
     @classmethod
     def build(
         cls,
@@ -79,7 +96,8 @@ class IllustrationPromptBuilder:
             context.character_name, 100
         )
         normalized_character_description = cls._normalize_text(
-            context.character_description, 240
+            cls._sanitize_character_description(context.character_description),
+            240,
         )
 
         parts = [

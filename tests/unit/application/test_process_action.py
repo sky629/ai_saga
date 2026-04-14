@@ -1024,6 +1024,7 @@ class TestDeathEndingPromptProfile:
             scenario_name="기연 일지",
         )
 
+        assert "이름: 실비아." not in prompt
         assert "성별: 여성." in prompt
         assert "외형: 검은 단발과 오래된 흉터." in prompt
         assert "목표: 살아서 동굴을 빠져나간다." in prompt
@@ -1043,5 +1044,6 @@ class TestDeathEndingPromptProfile:
             scenario_name="기연 일지",
         )
 
+        assert "이름: 연우." not in prompt
         assert "성별: 비공개." not in prompt
         assert "외형: 검은 머리의 가는 체구, 날카로운 눈매." in prompt

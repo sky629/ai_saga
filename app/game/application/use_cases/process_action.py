@@ -1721,6 +1721,8 @@ class ProcessActionUseCase:
             normalized = line.strip()
             if not normalized:
                 continue
+            if "이름:" in normalized:
+                continue
             if "성별: 비공개" in normalized:
                 continue
             filtered_lines.append(normalized.lstrip("-").strip())

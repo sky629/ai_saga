@@ -92,3 +92,41 @@ class TestIllustrationPromptBuilder:
         assert "The main focus is" not in prompt
         assert "Only these additional visible figures appear:" not in prompt
         assert "Important visual details:" not in prompt
+
+    def test_build_omits_name_from_character_description(self):
+        context = IllustrationPromptContext(
+            scene_narrative="무너진 사당 앞에서 칼을 고쳐 쥔다.",
+            character_name="실비아",
+            character_description=(
+                "- 이름: 실비아.\n"
+                "- 성별: 여성.\n"
+                "- 외형: 검은 단발과 오래된 흉터."
+            ),
+        )
+        scene_spec = IllustrationSceneSpec(
+            location="무너진 사당 앞",
+            visible_character_count=1,
+            other_visible_figures=(),
+            required_props=(),
+            state_fact_lines=(),
+            key_visual_beat=context.scene_narrative,
+            mood_and_lighting="tense silence",
+        )
+        visual_profile = IllustrationVisualProfile(
+            opening_line=(
+                "Create a cinematic Korean fantasy illustration for a "
+                "single story moment."
+            ),
+            world_guidance="Keep the world grounded in medieval fantasy.",
+        )
+
+        prompt = IllustrationPromptBuilder.build(
+            context=context,
+            scene_spec=scene_spec,
+            visual_profile=visual_profile,
+        )
+
+        assert "Keep the protagonist visually consistent with:" in prompt
+        assert "성별: 여성." in prompt
+        assert "외형: 검은 단발과 오래된 흉터." in prompt
+        assert "이름: 실비아." not in prompt
