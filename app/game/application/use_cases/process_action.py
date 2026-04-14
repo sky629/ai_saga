@@ -1582,9 +1582,16 @@ class ProcessActionUseCase:
         death_image_url = None
         if self._image_service:
             scenario = await self._scenario_repo.get_by_id(session.scenario_id)
+            raw_prompt_profile = getattr(character, "prompt_profile", "")
+            character_prompt_profile = (
+                raw_prompt_profile
+                if isinstance(raw_prompt_profile, str)
+                else ""
+            )
             death_image_url = await self._image_service.generate_image(
                 prompt=self._build_death_ending_image_prompt(
                     character_name=character.name,
+                    character_prompt_profile=character_prompt_profile,
                     current_location=session.current_location,
                     death_narrative=death_narrative,
                     scenario_name=scenario.name if scenario else "",
@@ -1665,6 +1672,7 @@ class ProcessActionUseCase:
     @staticmethod
     def _build_death_ending_image_prompt(
         character_name: str,
+        character_prompt_profile: str,
         current_location: str,
         death_narrative: str,
         scenario_name: str,
@@ -1679,12 +1687,18 @@ class ProcessActionUseCase:
         world_hint = (
             f"Set the scene in {scenario_name}. " if scenario_name else ""
         )
+        profile_hint = (
+            ProcessActionUseCase._sanitize_death_ending_profile_hint(
+                character_prompt_profile
+            )
+        )
         return (
             "Create a vertical tragic wuxia ending illustration. "
             "Use a Chinese martial arts animation atmosphere with a refined "
             "Japanese-anime-like protagonist. "
             f"{world_hint}"
             f"Show {character_name} collapsed in {location} after a fatal final struggle. "
+            f"{profile_hint}"
             f"Ending moment cue: {scene or 'the final exhausted silence after defeat'}. "
             "Focus on stillness, exhaustion, broken terrain, dim cave light, "
             "and the aftermath of defeat. "
@@ -1693,6 +1707,28 @@ class ProcessActionUseCase:
             "achievement boards, trading cards, menus, or UI elements "
             "anywhere in the image."
         )
+
+    @staticmethod
+    def _sanitize_death_ending_profile_hint(
+        character_prompt_profile: str,
+    ) -> str:
+        """사망 엔딩 이미지 프롬프트용 캐릭터 프로필을 정리한다."""
+        if not character_prompt_profile.strip():
+            return ""
+
+        filtered_lines: list[str] = []
+        for line in character_prompt_profile.splitlines():
+            normalized = line.strip()
+            if not normalized:
+                continue
+            if "성별: 비공개" in normalized:
+                continue
+            filtered_lines.append(normalized.lstrip("-").strip())
+
+        if not filtered_lines:
+            return ""
+
+        return "Character reference: " + " ".join(filtered_lines) + " "
 
     async def _check_idempotency(
         self, session_id: UUID, idempotency_key: str

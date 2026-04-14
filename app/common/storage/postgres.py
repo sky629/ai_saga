@@ -80,7 +80,7 @@ class PostgresStorage(metaclass=Singleton):
             read_database_url = self._get_database_url(read_url)
             read_engine = create_async_engine(
                 read_database_url,
-                echo=not settings.is_prod(),
+                echo=False,
                 pool_size=8,  # Optimized for read operations
                 max_overflow=15,
                 pool_pre_ping=True,
@@ -91,7 +91,7 @@ class PostgresStorage(metaclass=Singleton):
             write_database_url = self._get_database_url(write_url)
             write_engine = create_async_engine(
                 write_database_url,
-                echo=not settings.is_prod(),
+                echo=False,
                 pool_size=10,  # Optimized for write operations
                 max_overflow=20,
                 pool_pre_ping=True,

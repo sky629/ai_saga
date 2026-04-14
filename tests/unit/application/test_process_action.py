@@ -1004,3 +1004,44 @@ class TestProcessActionCommitOrdering:
             )
 
         cache_service.set.assert_not_called()
+
+
+class TestDeathEndingPromptProfile:
+    """사망 엔딩 이미지 프롬프트에 캐릭터 프로필 반영 규칙을 검증한다."""
+
+    def test_death_ending_prompt_includes_public_gender_and_appearance(self):
+        prompt = ProcessActionUseCase._build_death_ending_image_prompt(
+            character_name="실비아",
+            character_prompt_profile=(
+                "- 이름: 실비아.\n"
+                "- 나이: 27세.\n"
+                "- 성별: 여성.\n"
+                "- 외형: 검은 단발과 오래된 흉터.\n"
+                "- 목표: 살아서 동굴을 빠져나간다."
+            ),
+            current_location="청색광이 감도는 거대 동굴",
+            death_narrative="실비아는 끝내 동굴 바닥에 쓰러졌다.",
+            scenario_name="기연 일지",
+        )
+
+        assert "성별: 여성." in prompt
+        assert "외형: 검은 단발과 오래된 흉터." in prompt
+        assert "목표: 살아서 동굴을 빠져나간다." in prompt
+
+    def test_death_ending_prompt_omits_private_gender(self):
+        prompt = ProcessActionUseCase._build_death_ending_image_prompt(
+            character_name="연우",
+            character_prompt_profile=(
+                "- 이름: 연우.\n"
+                "- 나이: 19세.\n"
+                "- 성별: 비공개.\n"
+                "- 외형: 검은 머리의 가는 체구, 날카로운 눈매.\n"
+                "- 목표: 동굴을 탈출해 강호에 이름을 남긴다."
+            ),
+            current_location="절벽 아래 동굴",
+            death_narrative="연우는 마지막 숨을 몰아쉬며 무릎을 꿇었다.",
+            scenario_name="기연 일지",
+        )
+
+        assert "성별: 비공개." not in prompt
+        assert "외형: 검은 머리의 가는 체구, 날카로운 눈매." in prompt
