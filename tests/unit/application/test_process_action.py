@@ -1047,3 +1047,17 @@ class TestDeathEndingPromptProfile:
         assert "이름: 연우." not in prompt
         assert "성별: 비공개." not in prompt
         assert "외형: 검은 머리의 가는 체구, 날카로운 눈매." in prompt
+
+    def test_death_ending_prompt_forces_collapsed_pose(self):
+        prompt = ProcessActionUseCase._build_death_ending_image_prompt(
+            character_name="하하",
+            character_prompt_profile="",
+            current_location="절벽 아래 동굴",
+            death_narrative="하하는 마지막 숨을 몰아쉬며 바닥으로 쓰러졌다.",
+            scenario_name="기연 일지",
+        )
+
+        assert "kneeling, fallen, slumped against rock" in prompt
+        assert "body weight giving out" in prompt
+        assert "Do not depict a standing hero pose" in prompt
+        assert "upright full-body victory stance" in prompt

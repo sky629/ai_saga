@@ -1433,6 +1433,12 @@ async def test_progression_hp_zero_triggers_immediate_defeat_ending():
         ]["ending_type"]
         == "defeat"
     )
+    death_prompt = image_service.generate_image.call_args_list[-1].kwargs[
+        "prompt"
+    ]
+    assert "This is a death scene, not a generic defeat scene." in death_prompt
+    assert "collapsed, kneeling, fallen, or slumped posture" in death_prompt
+    assert "cave mouth aftermath" not in death_prompt
 
 
 @pytest.mark.asyncio
@@ -1535,6 +1541,11 @@ async def test_progression_hp_zero_on_final_turn_takes_priority_over_score():
     assert (
         "탈출 실패" in result.response.final_outcome.achievement_board.summary
     )
+    death_prompt = image_service.generate_image.call_args_list[-1].kwargs[
+        "prompt"
+    ]
+    assert "This is a death scene, not a generic defeat scene." in death_prompt
+    assert "collapsed, kneeling, fallen, or slumped posture" in death_prompt
 
 
 @pytest.mark.asyncio

@@ -523,17 +523,18 @@ class ProcessActionUseCase:
 
         current_hp = int(updated_session.game_state.get("hp", 0))
         if consumes_turn and current_hp <= 0:
-            response, updated_session = await self._build_progression_ending(
-                session=updated_session,
-                character=character,
-                scenario=scenario,
-                narrative=(
-                    f"{narrative}\n\n"
-                    f"💀 {character.name}의 체력이 바닥나며 더는 "
-                    f"버티지 못하고 쓰러집니다."
-                ),
-                forced_ending=EndingType.DEFEAT,
-                existing_image_url=image_url,
+            response, updated_session = (
+                await self._build_progression_death_ending(
+                    session=updated_session,
+                    character=character,
+                    scenario=scenario,
+                    narrative=(
+                        f"{narrative}\n\n"
+                        f"💀 {character.name}의 체력이 바닥나며 더는 "
+                        f"버티지 못하고 쓰러집니다."
+                    ),
+                    existing_image_url=image_url,
+                )
             )
         elif (
             consumes_turn
@@ -635,10 +636,88 @@ class ProcessActionUseCase:
                 session_id=str(completed_session.id),
                 user_id=str(completed_session.user_id),
             )
-        completed_session = completed_session.model_copy(
+        return await self._finalize_progression_ending(
+            session=completed_session,
+            character=character,
+            scenario=scenario,
+            ending_type=ending_type,
+            achievement_board=achievement_board,
+            ending_narrative=ending_narrative,
+            final_image_url=final_image_url,
+        )
+
+    async def _build_progression_death_ending(
+        self,
+        session: GameSessionEntity,
+        character: CharacterEntity,
+        scenario,
+        narrative: str,
+        existing_image_url: str | None,
+    ) -> tuple[GameEndingResponse, GameSessionEntity]:
+        achievement_board = ProgressionStateService.build_achievement_board(
+            state=session.game_state,
+            character_name=character.name,
+            scenario_name=scenario.name,
+            turn_count=session.turn_count,
+            max_turns=session.max_turns,
+        )
+        ending_type = EndingType.DEFEAT
+        achievement_board = ProgressionStateService.apply_forced_outcome(
+            achievement_board,
+            ending_type,
+        )
+        achievement_board = await self._generate_progression_title(
+            scenario=scenario,
+            character=character,
+            ending_type=ending_type,
+            achievement_board=achievement_board,
+        )
+
+        completed_session = session.complete(ending_type)
+        ending_narrative = await self._generate_progression_death_narrative(
+            scenario=scenario,
+            character=character,
+            achievement_board=achievement_board,
+            base_narrative=narrative,
+        )
+
+        final_image_url = existing_image_url
+        if self._image_service:
+            final_image_url = await self._image_service.generate_image(
+                prompt=self._build_progression_death_image_prompt(
+                    character=character,
+                    scenario=scenario,
+                    current_location=completed_session.current_location,
+                    ending_narrative=ending_narrative,
+                ),
+                session_id=str(completed_session.id),
+                user_id=str(completed_session.user_id),
+            )
+
+        return await self._finalize_progression_ending(
+            session=completed_session,
+            character=character,
+            scenario=scenario,
+            ending_type=ending_type,
+            achievement_board=achievement_board,
+            ending_narrative=ending_narrative,
+            final_image_url=final_image_url,
+        )
+
+    async def _finalize_progression_ending(
+        self,
+        session: GameSessionEntity,
+        character: CharacterEntity,
+        scenario,
+        ending_type: EndingType,
+        achievement_board: dict[str, Any],
+        ending_narrative: str,
+        final_image_url: str | None,
+    ) -> tuple[GameEndingResponse, GameSessionEntity]:
+        completed_session = session.model_copy(
             update={
                 "game_state": ProgressionStateService.store_final_outcome(
-                    state=completed_session.game_state,
+                    state=session.game_state,
                     achievement_board=achievement_board,
                     image_url=final_image_url,
                     ending_narrative=ending_narrative,
@@ -802,6 +881,102 @@ class ProcessActionUseCase:
             return response.content.strip() or base_narrative
         except Exception:
             return base_narrative
+
+    async def _generate_progression_death_narrative(
+        self,
+        scenario,
+        character: CharacterEntity,
+        achievement_board: dict[str, Any],
+        base_narrative: str,
+    ) -> str:
+        """HP 0 죽음 엔딩 전용 최종 서사를 생성한다."""
+        death_prompt = (
+            "당신은 무협 성장형 텍스트 게임의 죽음 엔딩만 쓰는 진행자입니다.\n\n"
+            f"## 시나리오\n- 이름: {scenario.name}\n- 배경: {scenario.world_setting}\n"
+            f"- 주인공: {character.name}\n\n"
+            "## 서버가 확정한 결과\n"
+            "- ending_type: defeat\n"
+            "- 원인: hp_zero\n"
+            f"- 칭호: {achievement_board.get('title', '')}\n"
+            f"- 총 전력: {achievement_board.get('total_score', 0)}\n"
+            f"- 내공: {achievement_board.get('internal_power', 0)}\n"
+            f"- 외공: {achievement_board.get('external_power', 0)}\n"
+            f"- 비급: {achievement_board.get('manuals', [])}\n\n"
+            "## 규칙\n"
+            "- 주인공은 반드시 사망한 결말이어야 합니다.\n"
+            "- 탈출 성공, 생환, 재기, 희망찬 여운 같은 표현을 절대 쓰지 마세요.\n"
+            "- 마지막 숨, 무너지는 육신, 식어가는 기운, 패배의 정적을 분명히 드러내세요.\n"
+            "- 한국어 3~5문장으로 최종 결과만 서술하세요.\n"
+            "- 서사만 출력하고 JSON은 출력하지 마세요.\n"
+        )
+        try:
+            response = await self._llm.generate_response(
+                system_prompt=death_prompt,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "서버가 확정한 죽음 엔딩만 서술해주세요. "
+                            "반드시 사망으로 끝나야 합니다."
+                        ),
+                    }
+                ],
+            )
+            parsed = GameMasterService.parse_llm_response(response.content)
+            if isinstance(parsed, dict):
+                return GameMasterService.extract_narrative_from_parsed(
+                    parsed,
+                    fallback=base_narrative,
+                )
+            return response.content.strip() or base_narrative
+        except Exception:
+            return base_narrative
+
+    @staticmethod
+    def _build_progression_death_image_prompt(
+        character: CharacterEntity,
+        scenario,
+        current_location: str,
+        ending_narrative: str,
+    ) -> str:
+        """HP 0 죽음 엔딩 전용 이미지 프롬프트."""
+        scene = re.sub(r"\s+", " ", ending_narrative).strip()
+        scene = re.sub(r"[\"'`]+", "", scene)
+        if len(scene) > 220:
+            scene = scene[:220].rsplit(" ", 1)[0]
+        location = current_location.strip() or "a hostile cavern"
+        raw_prompt_profile = getattr(character, "prompt_profile", "")
+        character_prompt_profile = (
+            raw_prompt_profile if isinstance(raw_prompt_profile, str) else ""
+        )
+        profile_hint = (
+            ProcessActionUseCase._sanitize_death_ending_profile_hint(
+                character_prompt_profile
+            )
+        )
+        return (
+            "Create a vertical tragic wuxia death ending illustration. "
+            "Use a Chinese martial arts animation atmosphere with a refined "
+            "Japanese-anime-like protagonist. "
+            f"Set the scene in {scenario.name}. "
+            f"Place the body in {location}. "
+            "This is a death scene, not a generic defeat scene. "
+            "Show a collapsed, kneeling, fallen, or slumped posture with the "
+            "body weight giving out after a fatal wound. "
+            "Favor a low, intimate camera angle that emphasizes the broken "
+            "body and final stillness over a centered poster composition. "
+            "Do not depict a standing hero pose, upright full-body victory "
+            "stance, composed poster pose, triumphant silhouette, or clean "
+            "front-facing character showcase. "
+            f"{profile_hint}"
+            f"Ending moment cue: {scene or 'the final exhausted silence after death'}. "
+            "Focus on deathly stillness, extinguished energy, broken terrain, "
+            "dropped weapon, dim cave light, and the aftermath of a fatal end. "
+            "No readable text, letters, words, numbers, captions, subtitles, "
+            "logos, watermarks, signage, labels, HUDs, stat panels, "
+            "achievement boards, trading cards, menus, or UI elements "
+            "anywhere in the image."
+        )
 
     @staticmethod
     def _build_progression_parsed_response(
@@ -1698,6 +1873,10 @@ class ProcessActionUseCase:
             "Japanese-anime-like protagonist. "
             f"{world_hint}"
             f"Show {character_name} collapsed in {location} after a fatal final struggle. "
+            "The pose must feel broken and defeated: kneeling, fallen, "
+            "slumped against rock, or body weight giving out after the last hit. "
+            "Do not depict a standing hero pose, upright full-body victory "
+            "stance, composed poster pose, or triumphant silhouette. "
             f"{profile_hint}"
             f"Ending moment cue: {scene or 'the final exhausted silence after defeat'}. "
             "Focus on stillness, exhaustion, broken terrain, dim cave light, "
