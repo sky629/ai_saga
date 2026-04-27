@@ -196,6 +196,19 @@ class TestBuildSystemPrompt:
         assert '"before_narrative"' in prompt
         assert '"dice_applied"' in prompt
 
+    def test_system_prompt_requires_npcs_met_string_names_only(self):
+        """npcs_met는 문자열 이름 배열만 허용해야 한다."""
+        prompt = build_system_prompt(
+            scenario_name="test",
+            world_setting="test",
+            character_name="test",
+            character_description="test",
+        )
+
+        assert '"npcs_met": []' in prompt
+        assert "NPC 이름 문자열만 넣으세요" in prompt
+        assert "객체" in prompt
+
 
 class TestGameMasterPrompt:
     """Tests for GameMasterPrompt dataclass."""

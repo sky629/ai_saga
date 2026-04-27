@@ -28,6 +28,11 @@ def _build_console_logging_config(
                 "handlers": ["error"],
                 "propagate": False,
             },
+            "app.llm.prompt": {
+                "level": logging.INFO,
+                "handlers": ["default"],
+                "propagate": False,
+            },
             "uvicorn": {
                 "level": app_level,
                 "handlers": ["default"],

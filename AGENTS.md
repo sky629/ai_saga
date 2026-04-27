@@ -30,7 +30,7 @@ uv run pytest --cov=app                  # With coverage
 
 # Dev server
 uv run uvicorn app.main:app --reload     # http://localhost:8000
-# Swagger UI at http://localhost:8000/docs
+# Swagger UI at http://localhost:8000/api/docs/
 ```
 
 ## Code Style
@@ -130,6 +130,46 @@ Every feature follows Red → Green → Refactor:
 Layer order: Domain → Application → Infrastructure → Presentation.
 Never write production code without a failing test.
 
+## Spec-Driven Development Workflow
+
+For substantial feature work, use spec-driven development as the
+default operating model.
+
+1. Create or update a PRD in `.omx/plans/prd-{slug}.md` before writing
+   production code.
+2. If the request is broad or ambiguous, converge on the spec first via
+   planning/consensus, then freeze the PRD.
+3. The PRD must define:
+   - problem statement
+   - goals and non-goals
+   - user stories or scenario slices
+   - testable acceptance criteria
+   - technical constraints
+   - risks and mitigations
+   - verification plan
+4. Use the PRD as the source of truth for implementation scope and
+   definition of done.
+5. Execute approved specs through a Ralph loop:
+   - select the next acceptance criterion or story slice
+   - write a failing test first
+   - implement the minimum change to pass
+   - run targeted tests/lint
+   - run independent verification/review
+   - repeat until the slice is accepted
+   - for docs/process-only changes, replace runtime tests with relevant
+     document/path consistency checks and explicit review notes
+6. Ralph completion is allowed only when all PRD acceptance criteria are
+   satisfied, impacted tests pass, lint/format checks pass, and
+   verification has no blocking findings.
+   - docs/process-only changes may complete without runtime tests if the
+     validation section explicitly records why runtime checks are not
+     applicable
+7. Handoff documents for substantial work must link the active PRD and
+   record the current slice, validation status, and remaining risks.
+
+See `docs/spec_driven_ralph_workflow.md` for the repository-specific
+workflow and templates.
+
 ## Execution Orchestration Rules
 
 Execution orchestration mode: sub-agent
@@ -187,7 +227,7 @@ Runs automatically on `git commit`:
 
 ```bash
 # Check what Swagger says before implementing endpoints
-open http://localhost:8000/docs
+open http://localhost:8000/api/docs/
 
 # Database schema lives here
 cat app/game/infrastructure/persistence/models/game_models.py

@@ -86,6 +86,16 @@ class IllustrationScenarioProfileResolver:
                 "appropriate material culture."
             ),
         ),
+        "wuxia": IllustrationVisualProfile(
+            opening_line=(
+                "Create a cinematic wuxia illustration for a single story "
+                "moment."
+            ),
+            world_guidance=(
+                "Keep the world grounded in wuxia drama, martial discipline, "
+                "cultivation, and atmospheric period fantasy."
+            ),
+        ),
         "post_apocalyptic": IllustrationVisualProfile(
             opening_line=(
                 "Create a gritty cinematic post-apocalyptic survival "
@@ -112,6 +122,29 @@ class IllustrationScenarioProfileResolver:
         return genre.lower().replace("-", "_").replace(" ", "_")
 
     @classmethod
+    def _canonicalize_game_type(cls, game_type: str) -> str:
+        return game_type.lower().replace("-", "_").replace(" ", "_")
+
+    @classmethod
+    def _build_game_type_lines(
+        cls, context: IllustrationPromptContext
+    ) -> tuple[str, ...]:
+        game_type = cls._canonicalize_game_type(
+            cls._normalize_text(context.scenario_game_type, 80)
+        )
+        if game_type == "progression":
+            return (
+                "Game type detail: progression growth scene focused on accumulated training, visible effort, and concrete state change.",
+            )
+        if game_type == "trpg":
+            return (
+                "Game type detail: TRPG adventure scene focused on the current role-playing moment, genre fidelity, and environmental storytelling.",
+            )
+        return (
+            "Game type detail: scenario-specific game scene focused on the current story moment and genre fidelity.",
+        )
+
+    @classmethod
     def _get_genre_profile(cls, genre: str) -> IllustrationVisualProfile:
         if not genre:
             return cls._GENRE_PROFILES["fantasy"]
@@ -133,6 +166,9 @@ class IllustrationScenarioProfileResolver:
     def _build_anchor_lines(
         cls, context: IllustrationPromptContext
     ) -> tuple[str, ...]:
+        genre = cls._canonicalize_genre(
+            cls._normalize_text(context.scenario_genre, 80)
+        )
         combined = " ".join(
             filter(
                 None,
@@ -169,7 +205,7 @@ class IllustrationScenarioProfileResolver:
                 "Scenario anchor: dystopian near-future Seoul with cyberware, neon signage, dense infrastructure, surveillance, and corporate decay.",
             )
 
-        if any(
+        if genre == "wuxia" and any(
             token in combined
             for token in (
                 "무협",
@@ -179,7 +215,7 @@ class IllustrationScenarioProfileResolver:
                 "외공",
                 "비급",
                 "수련",
-                "progression",
+                "기연",
             )
         ):
             return (
@@ -253,6 +289,7 @@ class IllustrationScenarioProfileResolver:
         return IllustrationVisualProfile(
             opening_line=base_profile.opening_line,
             world_guidance=base_profile.world_guidance,
+            game_type_lines=cls._build_game_type_lines(context),
             anchor_lines=cls._build_anchor_lines(context),
             negative_guidance=cls._merge_negative_guidance(
                 context, base_profile

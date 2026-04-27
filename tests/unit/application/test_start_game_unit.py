@@ -464,6 +464,7 @@ async def test_start_game_uses_dummy_illustration_when_feature_disabled(
     assert "Single-panel illustration only." in called_prompt
     assert "No readable text" in called_prompt
     assert "This must look like a clean illustration" in called_prompt
+    assert "Game type detail: TRPG adventure scene" in called_prompt
     assert "Set the scene at 서울 외곽 - 폐건물 2층." in called_prompt
     assert "The main focus is Hero." in called_prompt
     assert "zombie apocalypse" in called_prompt.lower()

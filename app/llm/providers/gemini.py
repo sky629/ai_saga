@@ -3,6 +3,7 @@
 Uses Google's new genai SDK to interact with Gemini models.
 """
 
+import json
 import logging
 import math
 import re
@@ -23,6 +24,7 @@ from app.llm.dto.llm_response import LLMResponse, TokenUsage
 from app.llm.providers.base import LLMProvider
 
 logger = logging.getLogger("uvicorn")
+prompt_logger = logging.getLogger("app.llm.prompt")
 
 
 def _extract_retry_after_seconds(error: Exception) -> int | None:
@@ -97,6 +99,18 @@ class GeminiProvider(LLMProvider):
 
         # Build conversation contents
         contents = self._build_contents(system_prompt, messages)
+        prompt_payload = {
+            "event": "llm_prompt",
+            "provider": "gemini",
+            "model": self.model_name,
+            "temperature": temperature,
+            "system_prompt": system_prompt,
+            "messages": messages,
+        }
+        prompt_logger.info(
+            "LLM prompt payload: %s",
+            json.dumps(prompt_payload, ensure_ascii=False),
+        )
 
         # Call Gemini API using new SDK
         try:

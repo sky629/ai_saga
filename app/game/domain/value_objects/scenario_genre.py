@@ -11,4 +11,5 @@ class ScenarioGenre(str, Enum):
     SURVIVAL = "survival"
     MYSTERY = "mystery"
     HISTORICAL = "historical"
+    WUXIA = "wuxia"
     POST_APOCALYPTIC = "post_apocalyptic"

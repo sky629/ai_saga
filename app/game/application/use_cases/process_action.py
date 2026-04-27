@@ -34,6 +34,9 @@ from app.game.application.services.game_memory_text_builder import (
 from app.game.application.services.illustration_generation_service import (
     IllustrationGenerationService,
 )
+from app.game.application.services.illustration_layout_constraints import (
+    SINGLE_PANEL_IMAGE_CONSTRAINT,
+)
 from app.game.application.services.progression_state_service import (
     ProgressionStateService,
 )
@@ -348,6 +351,7 @@ class ProcessActionUseCase:
                 if msg.id != user_message.id
             ],
             will_be_final_turn=(session.turn_count + 1) >= session.max_turns,
+            scenario_genre=scenario.genre,
         )
         llm_response = None
         parsed: dict[str, Any] = {}
@@ -632,6 +636,7 @@ class ProcessActionUseCase:
                 prompt=ProgressionStateService.build_final_image_prompt(
                     achievement_board=achievement_board,
                     ending_narrative=ending_narrative,
+                    scenario_genre=scenario.genre,
                 ),
                 session_id=str(completed_session.id),
                 user_id=str(completed_session.user_id),
@@ -780,6 +785,7 @@ class ProcessActionUseCase:
                     character_name=character.name,
                     ending_type=ending_type.value,
                     achievement_board=achievement_board,
+                    scenario_genre=scenario.genre,
                 ),
                 messages=[
                     {
@@ -861,6 +867,7 @@ class ProcessActionUseCase:
                     ending_type=ending_type.value,
                     achievement_board=achievement_board,
                     cause=cause,
+                    scenario_genre=scenario.genre,
                 ),
                 messages=[
                     {
@@ -890,8 +897,12 @@ class ProcessActionUseCase:
         base_narrative: str,
     ) -> str:
         """HP 0 죽음 엔딩 전용 최종 서사를 생성한다."""
+        if self._is_wuxia_genre(getattr(scenario, "genre", "")):
+            role = "당신은 무협 성장형 텍스트 게임의 죽음 엔딩만 쓰는 진행자입니다."
+        else:
+            role = "당신은 성장형 텍스트 게임의 죽음 엔딩만 쓰는 진행자입니다."
         death_prompt = (
-            "당신은 무협 성장형 텍스트 게임의 죽음 엔딩만 쓰는 진행자입니다.\n\n"
+            f"{role}\n\n"
             f"## 시나리오\n- 이름: {scenario.name}\n- 배경: {scenario.world_setting}\n"
             f"- 주인공: {character.name}\n\n"
             "## 서버가 확정한 결과\n"
@@ -954,10 +965,12 @@ class ProcessActionUseCase:
                 character_prompt_profile
             )
         )
+        style_prompt = ProcessActionUseCase._build_death_image_style_prompt(
+            getattr(scenario, "genre", "")
+        )
         return (
-            "Create a vertical tragic wuxia death ending illustration. "
-            "Use a Chinese martial arts animation atmosphere with a refined "
-            "Japanese-anime-like protagonist. "
+            f"{style_prompt} "
+            f"{SINGLE_PANEL_IMAGE_CONSTRAINT} "
             f"Set the scene in {scenario.name}. "
             f"Place the body in {location}. "
             "This is a death scene, not a generic defeat scene. "
@@ -1770,6 +1783,7 @@ class ProcessActionUseCase:
                     current_location=session.current_location,
                     death_narrative=death_narrative,
                     scenario_name=scenario.name if scenario else "",
+                    scenario_genre=scenario.genre if scenario else "",
                 ),
                 session_id=str(session.id),
                 user_id=str(session.user_id),
@@ -1851,6 +1865,7 @@ class ProcessActionUseCase:
         current_location: str,
         death_narrative: str,
         scenario_name: str,
+        scenario_genre: str = "",
     ) -> str:
         scene = re.sub(r"\s+", " ", death_narrative).strip()
         scene = re.sub(r"[\"'`]+", "", scene)
@@ -1867,10 +1882,12 @@ class ProcessActionUseCase:
                 character_prompt_profile
             )
         )
+        style_prompt = ProcessActionUseCase._build_death_image_style_prompt(
+            scenario_genre
+        )
         return (
-            "Create a vertical tragic wuxia ending illustration. "
-            "Use a Chinese martial arts animation atmosphere with a refined "
-            "Japanese-anime-like protagonist. "
+            f"{style_prompt} "
+            f"{SINGLE_PANEL_IMAGE_CONSTRAINT} "
             f"{world_hint}"
             f"Show {character_name} collapsed in {location} after a fatal final struggle. "
             "The pose must feel broken and defeated: kneeling, fallen, "
@@ -1885,6 +1902,28 @@ class ProcessActionUseCase:
             "logos, watermarks, signage, labels, HUDs, stat panels, "
             "achievement boards, trading cards, menus, or UI elements "
             "anywhere in the image."
+        )
+
+    @staticmethod
+    def _is_wuxia_genre(scenario_genre: object) -> bool:
+        """무협 장르 여부를 정규화해서 판단한다."""
+        value = getattr(scenario_genre, "value", scenario_genre)
+        if not isinstance(value, str):
+            return False
+        return value.lower().replace("-", "_").replace(" ", "_") == "wuxia"
+
+    @staticmethod
+    def _build_death_image_style_prompt(scenario_genre: object) -> str:
+        """사망 이미지 스타일을 장르에 맞게 선택한다."""
+        if ProcessActionUseCase._is_wuxia_genre(scenario_genre):
+            return (
+                "Create a vertical tragic wuxia ending illustration. Use a "
+                "Chinese martial arts animation atmosphere with a refined "
+                "Japanese-anime-like protagonist."
+            )
+        return (
+            "Create a vertical tragic cinematic game ending illustration. Use "
+            "a genre-faithful atmosphere with a grounded protagonist design."
         )
 
     @staticmethod

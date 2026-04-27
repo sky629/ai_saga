@@ -14,6 +14,9 @@ from app.auth.container import AuthContainer
 from app.auth.infrastructure.persistence.models.user_models import User
 from app.common.storage.postgres import postgres_storage
 from app.common.utils.id_generator import get_uuid7
+from app.game.application.services.illustration_layout_constraints import (
+    SINGLE_PANEL_IMAGE_CONSTRAINT,
+)
 from app.game.application.services.progression_state_service import (
     ProgressionStateService,
 )
@@ -209,6 +212,7 @@ def _build_generic_ending_image_prompt(
     return (
         "vertical cinematic game ending illustration, "
         "anime-inspired fantasy storytelling, "
+        f"{SINGLE_PANEL_IMAGE_CONSTRAINT} "
         f"{ending_tone}, "
         f"protagonist {character_hint}, "
         f"scenario mood {scenario_hint}, "
@@ -354,7 +358,7 @@ AI와 인간의 경계는 이미 흐려졌고, 도시 전체가 거대한 감시
 강해지지 못하면 이곳은 무덤이 되지만, 충분한 깨달음을 쌓는다면 이 동굴은 당신에게 강호를 뒤흔들 명함 한 장을 남겨 줄 것입니다.""",
             initial_location="절벽 아래 - 청색광이 감도는 거대 동굴",
             game_type=GameType.PROGRESSION.value,
-            genre=ScenarioGenre.HISTORICAL.value,
+            genre=ScenarioGenre.WUXIA.value,
             difficulty=ScenarioDifficulty.NORMAL.value,
             max_turns=12,
             is_active=True,
@@ -512,6 +516,7 @@ async def regenerate_session_ending_image(
         prompt = ProgressionStateService.build_final_image_prompt(
             achievement_board=achievement_board,
             ending_narrative=narrative,
+            scenario_genre=scenario.genre if scenario else "",
         )
     else:
         prompt = _build_generic_ending_image_prompt(

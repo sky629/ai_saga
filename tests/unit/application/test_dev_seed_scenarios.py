@@ -43,6 +43,12 @@ async def test_seed_scenarios_creates_detailed_seed_content():
         scenario.game_type == "progression" and scenario.max_turns == 12
         for scenario in seeded_scenarios
     )
+    assert any(
+        scenario.name == "기연 일지"
+        and scenario.game_type == "progression"
+        and scenario.genre == "wuxia"
+        for scenario in seeded_scenarios
+    )
 
 
 @pytest.mark.asyncio

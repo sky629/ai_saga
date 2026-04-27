@@ -41,6 +41,8 @@ async def test_regenerate_ending_image_updates_session_and_message(
     async def fake_generate_image(self, prompt, session_id, user_id):
         del self, session_id, user_id
         assert "No readable text" in prompt
+        assert "single uninterrupted scene" in prompt.lower()
+        assert "no split-screen" in prompt.lower()
         assert "주인공은 끝내 동굴을 돌파" in prompt
         return new_image_url
 

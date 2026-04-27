@@ -3,6 +3,94 @@
 from typing import Any
 
 
+def _is_wuxia_genre(scenario_genre: str) -> bool:
+    """무협 장르 여부를 판단한다."""
+    return (
+        scenario_genre.lower().replace("-", "_").replace(" ", "_") == "wuxia"
+    )
+
+
+def _build_progression_host_role(scenario_genre: str) -> str:
+    """Progression 진행자 역할 문구를 장르별로 반환한다."""
+    if _is_wuxia_genre(scenario_genre):
+        return "당신은 무협 성장형 텍스트 게임의 진행자입니다."
+    return "당신은 성장형 텍스트 게임의 진행자입니다."
+
+
+def _build_progression_atmosphere_rule(scenario_genre: str) -> str:
+    """Progression 장르 분위기 규칙을 반환한다."""
+    if _is_wuxia_genre(scenario_genre):
+        return "- 무협, 기연, 수련, 동굴 생존 분위기를 유지합니다."
+    return "- 시나리오 장르와 세계관 분위기를 유지합니다."
+
+
+def _build_progression_manual_name_rules(scenario_genre: str) -> str:
+    """비급/기술 이름 생성 규칙을 장르별로 반환한다."""
+    if _is_wuxia_genre(scenario_genre):
+        return (
+            "- 새 비급 이름은 반드시 고유한 무협식 이름으로 작성하세요.\n"
+            "- `내공 심법`, `기초 심법`, `고적 기초 내공심법`, "
+            "`무명 신법`처럼 계열·등급·설명만 있는 generic 이름은 "
+            "절대 쓰지 마세요.\n"
+            "- `청광심법`, `현무금강체`, `낙영보`처럼 짧고 식별 가능한 "
+            "고유명으로 작성하세요."
+        )
+    return (
+        "- 새 기술/훈련 항목 이름은 반드시 시나리오 장르에 맞는 고유명으로 "
+        "작성하세요.\n"
+        "- 계열·등급·설명만 있는 generic 이름은 절대 쓰지 마세요.\n"
+        "- narrative에 등장한 이름과 같은 고유명을 상태 변경에도 사용하세요."
+    )
+
+
+def _build_progression_image_focus_rule(scenario_genre: str) -> str:
+    """image_focus 작성 규칙을 장르별로 반환한다."""
+    if _is_wuxia_genre(scenario_genre):
+        return (
+            "- 모든 이미지는 중국 무협 애니메이션 분위기이고, 인물 얼굴은 "
+            "세련된 일본 애니메이션 감성에 가깝게 상상하도록 image_focus를 "
+            "작성합니다."
+        )
+    return (
+        "- image_focus는 시나리오 장르와 세계관 분위기에 맞는 시각적 핵심만 "
+        "작성합니다."
+    )
+
+
+def _build_progression_opening_options_json(scenario_genre: str) -> str:
+    """오프닝 선택지 예시를 장르별로 반환한다."""
+    if _is_wuxia_genre(scenario_genre):
+        return """[
+    {"label": "동굴 벽면을 조사한다", "action_type": "progression"},
+    {"label": "폭포수 아래에서 호흡을 가다듬는다", "action_type": "progression"},
+    {"label": "청색 광맥의 기운을 탐색한다", "action_type": "progression"}
+  ]"""
+    return """[
+    {"label": "주변 자원을 점검한다", "action_type": "progression"},
+    {"label": "안전한 동선을 확보한다", "action_type": "progression"},
+    {"label": "다음 한 달의 훈련 방향을 정한다", "action_type": "progression"}
+  ]"""
+
+
+def _build_progression_turn_options_json(
+    scenario_genre: str, will_be_final_turn: bool
+) -> str:
+    """턴 선택지 예시를 장르별로 반환한다."""
+    if will_be_final_turn:
+        return "[]"
+    if _is_wuxia_genre(scenario_genre):
+        return """[
+    {"label": "약초 및 영과 탐색", "action_type": "progression"},
+    {"label": "지하 수로 조사", "action_type": "progression"},
+    {"label": "폭포수 아래 명상", "action_type": "progression"}
+  ]"""
+    return """[
+    {"label": "부족한 자원을 확보한다", "action_type": "progression"},
+    {"label": "현재 거점을 정비한다", "action_type": "progression"},
+    {"label": "다음 한 달의 위험을 조사한다", "action_type": "progression"}
+  ]"""
+
+
 def build_progression_opening_prompt(
     scenario_name: str,
     world_setting: str,
@@ -10,9 +98,13 @@ def build_progression_opening_prompt(
     character_description: str,
     current_location: str,
     max_turns: int,
+    scenario_genre: str = "",
 ) -> str:
     """게임 시작용 progression 시스템 프롬프트를 생성한다."""
-    return f"""당신은 무협 성장형 텍스트 게임의 진행자입니다.
+    host_role = _build_progression_host_role(scenario_genre)
+    atmosphere_rule = _build_progression_atmosphere_rule(scenario_genre)
+    options_json = _build_progression_opening_options_json(scenario_genre)
+    return f"""{host_role}
 
 ## 게임 전제
 - 시나리오: {scenario_name}
@@ -28,17 +120,13 @@ def build_progression_opening_prompt(
 - 답변은 한국어, 최대 5문장으로 작성합니다.
 - 아직 1개월이 흐르지 않았으므로 opening 응답의 consumes_turn은 false여야 합니다.
 - 선택지는 4~5개 제시하고, 모두 한 달 동안 수행할 활동 방향으로 작성합니다.
-- 무협, 기연, 수련, 동굴 생존 분위기를 유지합니다.
+{atmosphere_rule}
 
 ## 출력 JSON 형식
 ```json
 {{
   "narrative": "세계관 소개와 첫 장면",
-  "options": [
-    {{"label": "동굴 벽면을 조사한다", "action_type": "progression"}},
-    {{"label": "폭포수 아래에서 호흡을 가다듬는다", "action_type": "progression"}},
-    {{"label": "청색 광맥의 기운을 탐색한다", "action_type": "progression"}}
-  ],
+  "options": {options_json},
   "consumes_turn": false,
   "image_focus": "첫 장면의 시각적 핵심"
 }}
@@ -57,23 +145,21 @@ def build_progression_turn_prompt(
     player_action: str,
     conversation_history: list[dict[str, str]],
     will_be_final_turn: bool,
+    scenario_genre: str = "",
 ) -> tuple[str, list[dict[str, str]]]:
     """개월 진행/질문 대응용 progression 프롬프트를 조립한다."""
+    host_role = _build_progression_host_role(scenario_genre)
+    manual_name_rules = _build_progression_manual_name_rules(scenario_genre)
+    image_focus_rule = _build_progression_image_focus_rule(scenario_genre)
     option_rule = (
         "- 마지막 턴이면 선택지를 만들지 말고 `options`를 반드시 빈 배열 `[]`로 출력하세요."
         if will_be_final_turn
         else "- 마지막 턴이 아니면 선택지는 1~5개 제시합니다."
     )
-    options_json = (
-        "[]"
-        if will_be_final_turn
-        else """[
-    {"label": "약초 및 영과 탐색", "action_type": "progression"},
-    {"label": "지하 수로 조사", "action_type": "progression"},
-    {"label": "폭포수 아래 명상", "action_type": "progression"}
-  ]"""
+    options_json = _build_progression_turn_options_json(
+        scenario_genre, will_be_final_turn
     )
-    system_prompt = f"""당신은 무협 성장형 텍스트 게임의 진행자입니다.
+    system_prompt = f"""{host_role}
 
 ## 시나리오
 - 이름: {scenario_name}
@@ -106,16 +192,14 @@ def build_progression_turn_prompt(
 - 사용자가 선택 직후 받는 결과에는 성장, 체력 변화, 새 비급, 숙련도 변화가 드러나야 합니다.
 - consumes_turn=false 이면 질문 답변만 하고, `state_changes`는 반드시 빈 객체로 유지하세요.
 - 무림비급을 새로 얻었다면 `state_changes.manuals_gained`에 이름, 계열, 초기 숙련도를 반드시 넣으세요.
-- 새 비급 이름은 반드시 고유한 무협식 이름으로 작성하세요.
-- `내공 심법`, `기초 심법`, `고적 기초 내공심법`, `무명 신법`처럼 계열·등급·설명만 있는 generic 이름은 절대 쓰지 마세요.
-- `청광심법`, `현무금강체`, `낙영보`처럼 짧고 식별 가능한 고유명으로 작성하세요.
+{manual_name_rules}
 - narrative에 등장한 같은 이름을 `state_changes.manuals_gained`에도 그대로 넣으세요.
 - 기존 비급 숙련도가 올랐다면 `state_changes.manual_mastery_updates`에 이름과 증가량을 반드시 넣으세요.
 - `manual_mastery_updates`에서 증가량 키는 반드시 `mastery_delta`를 사용하세요. `delta` 같은 다른 키를 쓰지 마세요.
 - 이번 행동 이후 마지막 턴 도달 여부: {"예" if will_be_final_turn else "아니오"}
 - 마지막 턴이 아니라면 시한 종료, 마지막 한 달, 탈출 성공/실패, 엔딩 확정 같은 표현을 절대 쓰지 마세요.
 - 마지막 턴이어도 최종 탈출 성공/실패는 서버가 별도로 확정합니다. 이번 응답의 `narrative`에는 월간 결과까지만 쓰고 탈출 여부를 단정하지 마세요.
-- 모든 이미지는 중국 무협 애니메이션 분위기이고, 인물 얼굴은 세련된 일본 애니메이션 감성에 가깝게 상상하도록 image_focus를 작성합니다.
+{image_focus_rule}
 
 ## 출력 JSON 형식
 ```json
@@ -149,9 +233,16 @@ def build_progression_ending_prompt(
     ending_type: str,
     achievement_board: dict[str, Any],
     cause: str,
+    scenario_genre: str = "",
 ) -> str:
     """progression 최종 엔딩 서사 전용 프롬프트를 생성한다."""
-    return f"""당신은 무협 성장형 텍스트 게임의 최종 엔딩을 쓰는 진행자입니다.
+    if _is_wuxia_genre(scenario_genre):
+        role = (
+            "당신은 무협 성장형 텍스트 게임의 최종 엔딩을 쓰는 진행자입니다."
+        )
+    else:
+        role = "당신은 성장형 텍스트 게임의 최종 엔딩을 쓰는 진행자입니다."
+    return f"""{role}
 
 ## 시나리오
 - 이름: {scenario_name}
@@ -182,9 +273,14 @@ def build_progression_title_prompt(
     character_name: str,
     ending_type: str,
     achievement_board: dict[str, Any],
+    scenario_genre: str = "",
 ) -> str:
     """progression 최종 칭호 생성용 프롬프트를 만든다."""
-    return f"""당신은 무협 성장형 텍스트 게임의 최종 업적 보드 칭호를 만드는 작명가입니다.
+    if _is_wuxia_genre(scenario_genre):
+        role = "당신은 무협 성장형 텍스트 게임의 최종 업적 보드 칭호를 만드는 작명가입니다."
+    else:
+        role = "당신은 성장형 텍스트 게임의 최종 업적 보드 칭호를 만드는 작명가입니다."
+    return f"""{role}
 
 ## 시나리오
 - 이름: {scenario_name}

@@ -234,6 +234,7 @@ class StartGameUseCase:
                 scenario_name=scenario.name,
                 scenario_world_setting=scenario.world_setting,
                 scenario_tags=tuple(scenario.tags),
+                scenario_game_type=scenario.game_type,
             )
             initial_image_url = await IllustrationGenerationService.generate(
                 image_service=self._image_service,
@@ -284,6 +285,7 @@ class StartGameUseCase:
             character_description=character.prompt_profile,
             current_location=session.current_location,
             max_turns=session.max_turns,
+            scenario_genre=scenario.genre,
         )
         response = await self._llm.generate_response(
             system_prompt=system_prompt,

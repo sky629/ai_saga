@@ -145,6 +145,7 @@ class GenerateIllustrationUseCase:
             scenario_name=scenario.name,
             scenario_world_setting=scenario.world_setting,
             scenario_tags=tuple(scenario.tags),
+            scenario_game_type=scenario.game_type,
         )
 
         image_url = await IllustrationGenerationService.generate(

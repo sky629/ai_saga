@@ -34,3 +34,10 @@ class TestLoggingConfig:
         assert config["loggers"]["uvicorn.error"]["level"] == logging.WARNING
         assert config["loggers"]["uvicorn.access"]["handlers"] == ["ignore"]
         assert config["loggers"]["uvicorn.access"]["level"] == logging.WARNING
+
+    def test_console_logging_config_keeps_llm_prompt_logger_in_prod(self):
+        """프로덕션에서도 프롬프트 로거는 INFO로 유지해야 한다."""
+        config = get_console_logging_config(is_prod=True)
+
+        assert config["loggers"]["app.llm.prompt"]["level"] == logging.INFO
+        assert config["loggers"]["app.llm.prompt"]["handlers"] == ["default"]

@@ -6,6 +6,9 @@ import copy
 import re
 from typing import Any
 
+from app.game.application.services.illustration_layout_constraints import (
+    SINGLE_PANEL_IMAGE_CONSTRAINT,
+)
 from app.game.domain.value_objects import EndingType
 
 
@@ -295,40 +298,81 @@ class ProgressionStateService:
         cls,
         achievement_board: dict[str, Any],
         ending_narrative: str,
+        scenario_genre: str = "",
     ) -> str:
         """텍스트 없는 엔딩 장면용 이미지 생성 프롬프트를 만든다."""
         ending_type = str(achievement_board.get("ending_type", "")).strip()
         manuals = achievement_board.get("manuals", [])
-        visual_energy = cls._build_final_visual_energy_hint(manuals)
+        visual_energy = cls._build_final_visual_energy_hint(
+            manuals, scenario_genre
+        )
         narrative_hint = cls._sanitize_ending_image_narrative(ending_narrative)
+        genre_style = cls._build_final_image_genre_style(scenario_genre)
 
-        if ending_type == EndingType.VICTORY.value:
-            outcome_direction = "victory, cave exit, release, dawn light"
-        elif ending_type == EndingType.DEFEAT.value:
-            outcome_direction = (
-                "defeat, tragic stillness, exhaustion, collapsed aftermath"
-            )
-        else:
-            outcome_direction = (
-                "neutral ending, bittersweet ambiguity, threshold"
-            )
+        outcome_direction = cls._build_final_outcome_direction(
+            ending_type, scenario_genre
+        )
+        environment_style = cls._build_final_environment_style(scenario_genre)
 
         return (
-            "vertical wuxia ending illustration, "
-            "chinese martial arts animation, "
-            "refined anime hero, "
-            "lone martial artist silhouette, "
-            "cave mouth aftermath, "
+            f"{genre_style}, "
+            f"{SINGLE_PANEL_IMAGE_CONSTRAINT} "
             f"{outcome_direction}, "
             f"{visual_energy}, "
             f"{narrative_hint}, "
-            "dramatic backlight, weathered stone, dust, wind, aura, "
+            f"{environment_style}, "
             "cinematic composition, environmental storytelling only, "
             "No readable text, letters, words, numbers, captions, subtitles, "
             "logos, watermarks, signage, labels, calligraphy, banners, seals, "
             "HUDs, stat panels, achievement boards, trading cards, menus, or "
             "UI elements anywhere in the image."
         )
+
+    @staticmethod
+    def _is_wuxia_genre(scenario_genre: str) -> bool:
+        return (
+            scenario_genre.lower().replace("-", "_").replace(" ", "_")
+            == "wuxia"
+        )
+
+    @classmethod
+    def _build_final_image_genre_style(cls, scenario_genre: str) -> str:
+        if cls._is_wuxia_genre(scenario_genre):
+            return (
+                "vertical wuxia ending illustration, chinese martial arts "
+                "animation, refined anime hero, lone martial artist "
+                "silhouette, cave mouth aftermath"
+            )
+        return (
+            "vertical cinematic progression ending illustration, genre-faithful "
+            "progression aftermath, lone protagonist silhouette, final threshold "
+            "aftermath"
+        )
+
+    @classmethod
+    def _build_final_outcome_direction(
+        cls, ending_type: str, scenario_genre: str
+    ) -> str:
+        if cls._is_wuxia_genre(scenario_genre):
+            if ending_type == EndingType.VICTORY.value:
+                return "victory, cave exit, release, dawn light"
+            if ending_type == EndingType.DEFEAT.value:
+                return (
+                    "defeat, tragic stillness, exhaustion, collapsed aftermath"
+                )
+            return "neutral ending, bittersweet ambiguity, threshold"
+
+        if ending_type == EndingType.VICTORY.value:
+            return "victory, release, survival, dawn light"
+        if ending_type == EndingType.DEFEAT.value:
+            return "defeat, tragic stillness, exhaustion, collapsed aftermath"
+        return "neutral ending, bittersweet ambiguity, threshold"
+
+    @classmethod
+    def _build_final_environment_style(cls, scenario_genre: str) -> str:
+        if cls._is_wuxia_genre(scenario_genre):
+            return "dramatic backlight, weathered stone, dust, wind, aura"
+        return "dramatic lighting, worn environment, dust, wind, hard-earned quiet"
 
     @staticmethod
     def _sanitize_ending_image_narrative(ending_narrative: str) -> str:
@@ -341,8 +385,14 @@ class ProgressionStateService:
 
     @classmethod
     def _build_final_visual_energy_hint(
-        cls, manuals: list[dict[str, Any]]
+        cls, manuals: list[dict[str, Any]], scenario_genre: str = ""
     ) -> str:
+        if not cls._is_wuxia_genre(scenario_genre):
+            return (
+                "visible exhaustion, worn gear, environmental scars, and "
+                "concrete evidence of accumulated progress"
+            )
+
         categories = [
             str(manual.get("category", "")).strip().lower()
             for manual in manuals

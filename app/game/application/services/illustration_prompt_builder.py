@@ -2,6 +2,10 @@
 
 from dataclasses import dataclass
 
+from app.game.application.services.illustration_layout_constraints import (
+    COMMON_IMAGE_PROMPT_LINES,
+)
+
 
 @dataclass(frozen=True)
 class IllustrationPromptContext:
@@ -38,6 +42,7 @@ class IllustrationVisualProfile:
 
     opening_line: str
     world_guidance: str
+    game_type_lines: tuple[str, ...] = ()
     anchor_lines: tuple[str, ...] = ()
     negative_guidance: tuple[str, ...] = ()
 
@@ -101,8 +106,9 @@ class IllustrationPromptBuilder:
         )
 
         parts = [
+            *COMMON_IMAGE_PROMPT_LINES,
+            *visual_profile.game_type_lines,
             visual_profile.opening_line,
-            "Single-panel illustration only.",
             (
                 "Depict this exact story moment: "
                 + cls._ensure_terminal_punctuation(narrative)
@@ -159,22 +165,9 @@ class IllustrationPromptBuilder:
         parts.extend(visual_profile.anchor_lines)
         parts.extend(visual_profile.negative_guidance)
 
-        parts.extend(
-            [
-                (
-                    "No readable text, letters, words, numbers, captions, "
-                    "dialogue balloons, sound effects, subtitles, signage, "
-                    "labels, logos, or watermarks anywhere in the image."
-                ),
-                (
-                    "Do not render documents, white text boxes, book pages, "
-                    "forms, posters, menus, HUDs, chat windows, or comic panels."
-                ),
-                (
-                    "This must look like a clean illustration, not a "
-                    "text-heavy graphic, screenshot, or UI mockup."
-                ),
-            ]
+        parts.append(
+            "This must look like a clean illustration, not a text-heavy "
+            "graphic, screenshot, or UI mockup."
         )
 
         return " ".join(parts)

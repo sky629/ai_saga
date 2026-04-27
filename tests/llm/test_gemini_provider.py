@@ -3,6 +3,7 @@
 Tests for GeminiProvider using google.genai SDK.
 """
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -156,3 +157,26 @@ class TestGeminiProvider:
                 )
 
         assert mock_client.aio.models.generate_content.call_count == 3
+
+    async def test_generate_response_logs_prompt_payload_before_api_call(
+        self, provider, mock_genai
+    ):
+        """Gemini API 호출 직전에 원문 프롬프트 payload를 로그로 남긴다."""
+        with patch("app.llm.providers.gemini.prompt_logger") as mock_logger:
+            await provider.generate_response(
+                system_prompt="You are a game master.",
+                messages=[{"role": "user", "content": "Look around"}],
+                temperature=0.9,
+            )
+
+        mock_logger.info.assert_called_once()
+        _, payload_json = mock_logger.info.call_args.args
+        payload = json.loads(payload_json)
+        assert payload["event"] == "llm_prompt"
+        assert payload["provider"] == "gemini"
+        assert payload["model"] == "gemini-2.0-flash"
+        assert payload["temperature"] == 0.9
+        assert payload["system_prompt"] == "You are a game master."
+        assert payload["messages"] == [
+            {"role": "user", "content": "Look around"}
+        ]

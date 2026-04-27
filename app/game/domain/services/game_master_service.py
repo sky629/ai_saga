@@ -150,9 +150,34 @@ class GameMasterService:
             items_gained=changes_dict.get("items_gained", []),
             items_lost=changes_dict.get("items_lost", []),
             location=changes_dict.get("location"),
-            npcs_met=changes_dict.get("npcs_met", []),
+            npcs_met=GameMasterService._normalize_npc_entries(
+                changes_dict.get("npcs_met", [])
+            ),
             discoveries=changes_dict.get("discoveries", []),
         )
+
+    @staticmethod
+    def _normalize_npc_entries(value: object) -> list[str]:
+        """npcs_met 입력을 이름 문자열 목록으로 정규화한다."""
+        if not isinstance(value, list):
+            return []
+
+        normalized: list[str] = []
+        for item in value:
+            if isinstance(item, str):
+                text = item.strip()
+                if text:
+                    normalized.append(text)
+                continue
+
+            if isinstance(item, dict):
+                for key in ("name", "label", "title"):
+                    candidate = item.get(key)
+                    if isinstance(candidate, str) and candidate.strip():
+                        normalized.append(candidate.strip())
+                        break
+
+        return normalized
 
     @staticmethod
     def extract_narrative_from_parsed(parsed: dict, fallback: str) -> str:

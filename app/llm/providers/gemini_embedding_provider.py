@@ -3,6 +3,7 @@
 Uses Google's genai SDK to generate text embeddings for RAG.
 """
 
+import json
 import logging
 import math
 import re
@@ -20,6 +21,7 @@ from app.common.exception import TooManyRequests
 from app.llm.embedding_service_interface import EmbeddingServiceInterface
 
 logger = logging.getLogger("uvicorn")
+prompt_logger = logging.getLogger("app.llm.prompt")
 
 
 def _extract_retry_after_seconds(error: Exception) -> int | None:
@@ -94,6 +96,18 @@ class GeminiEmbeddingProvider(EmbeddingServiceInterface):
         # Validate input
         if not text or not text.strip():
             raise ValueError("Text cannot be empty or whitespace-only")
+
+        prompt_payload = {
+            "event": "embedding_prompt",
+            "provider": "gemini",
+            "model": self.model_name,
+            "output_dimensionality": self.output_dimensionality,
+            "text": text,
+        }
+        prompt_logger.info(
+            "LLM embedding payload: %s",
+            json.dumps(prompt_payload, ensure_ascii=False),
+        )
 
         try:
             # Call Gemini Embedding API with output dimensionality

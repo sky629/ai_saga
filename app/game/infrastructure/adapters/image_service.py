@@ -14,16 +14,13 @@ from google.genai import types
 
 from app.common.utils.id_generator import get_uuid7
 from app.game.application.ports import ImageGenerationServiceInterface
+from app.game.application.services.illustration_layout_constraints import (
+    GLOBAL_IMAGE_LAYOUT_PROMPT,
+    GLOBAL_IMAGE_STYLE_PROMPT,
+)
 from config.settings import settings
 
 logger = logging.getLogger("uvicorn")
-GLOBAL_IMAGE_STYLE_PROMPT = "cinematic illustration"
-GLOBAL_IMAGE_LAYOUT_PROMPT = (
-    "single full-bleed illustration, edge-to-edge composition, "
-    "borderless artwork, no blank white margins, no empty padding, "
-    "no comic panels, no panel gutters, no speech bubbles, "
-    "no dialogue balloons, no captions"
-)
 DEFAULT_IMAGE_ASPECT_RATIO = "3:4"
 
 
@@ -124,7 +121,7 @@ class ImageGenerationServiceAdapter(ImageGenerationServiceInterface):
         if GLOBAL_IMAGE_STYLE_PROMPT.lower() not in normalized_prompt:
             prefix_parts.append(GLOBAL_IMAGE_STYLE_PROMPT)
 
-        if "no speech bubbles" not in normalized_prompt:
+        if GLOBAL_IMAGE_LAYOUT_PROMPT.lower() not in normalized_prompt:
             prefix_parts.append(GLOBAL_IMAGE_LAYOUT_PROMPT)
 
         if not prefix_parts:

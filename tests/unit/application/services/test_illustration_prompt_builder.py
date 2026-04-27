@@ -48,6 +48,8 @@ class TestIllustrationPromptBuilder:
 
         assert "cinematic Korean fantasy illustration" in prompt
         assert "Single-panel illustration only." in prompt
+        assert "Single uninterrupted scene in one camera shot only" in prompt
+        assert "no split-screen" in prompt
         assert "Depict this exact story moment:" in prompt
         assert "No readable text" in prompt
         assert "This must look like a clean illustration" in prompt
@@ -130,3 +132,44 @@ class TestIllustrationPromptBuilder:
         assert "성별: 여성." in prompt
         assert "외형: 검은 단발과 오래된 흉터." in prompt
         assert "이름: 실비아." not in prompt
+
+    def test_build_orders_common_game_type_genre_then_scene_detail(self):
+        context = IllustrationPromptContext(
+            scene_narrative="비상등 아래에서 감염체의 발소리를 듣는다.",
+        )
+        scene_spec = IllustrationSceneSpec(
+            location="서울역 지하 통로",
+            visible_character_count=1,
+            other_visible_figures=(),
+            required_props=(),
+            state_fact_lines=(),
+            key_visual_beat=context.scene_narrative,
+            mood_and_lighting="restrained danger",
+        )
+        visual_profile = IllustrationVisualProfile(
+            opening_line=(
+                "Create a gritty cinematic post-apocalyptic survival "
+                "illustration for a single story moment."
+            ),
+            world_guidance="Keep the world grounded in harsh survival drama.",
+            game_type_lines=(
+                "Game type detail: TRPG adventure scene focused on the current role-playing moment.",
+            ),
+        )
+
+        prompt = IllustrationPromptBuilder.build(
+            context=context,
+            scene_spec=scene_spec,
+            visual_profile=visual_profile,
+        )
+
+        common_index = prompt.index("Common image contract: vertical 3:4")
+        game_type_index = prompt.index("Game type detail: TRPG")
+        genre_index = prompt.index(
+            "Create a gritty cinematic post-apocalyptic survival illustration"
+        )
+        scene_index = prompt.index("Depict this exact story moment:")
+
+        assert common_index < game_type_index < genre_index < scene_index
+        assert "No readable text" in prompt
+        assert "no split-screen" in prompt

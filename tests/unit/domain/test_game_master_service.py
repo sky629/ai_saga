@@ -172,6 +172,22 @@ Some extra text here"""
         assert changes.hp_change == 0  # default
         assert changes.items_gained == []  # default
 
+    def test_extract_state_changes_normalizes_npc_objects_to_names(self):
+        """npcs_met 객체 입력은 이름 문자열 목록으로 정규화한다."""
+        parsed = {
+            "state_changes": {
+                "npcs_met": [
+                    {"name": "엘프", "status": "적대적"},
+                    {"label": "수상한 상인"},
+                    "경비병",
+                ]
+            }
+        }
+
+        changes = GameMasterService.extract_state_changes(parsed)
+
+        assert changes.npcs_met == ["엘프", "수상한 상인", "경비병"]
+
     def test_extract_narrative_from_parsed(self):
         """Test extracting narrative from parsed JSON."""
         parsed = {"narrative": "You enter a dark cave."}

@@ -195,6 +195,7 @@ class TestGenerateIllustrationUseCase:
         assert "Single-panel illustration only." in called_prompt
         assert "No readable text" in called_prompt
         assert "This must look like a clean illustration" in called_prompt
+        assert "Game type detail: TRPG adventure scene" in called_prompt
         assert "Set the scene at 서울역 지하 통로." in called_prompt
         assert "The main focus is 실비아." in called_prompt
         assert "These scene facts must stay true:" in called_prompt

@@ -1009,6 +1009,9 @@ class TestDiceIntegration:
         )
         death_prompt = image_service.generate_image.await_args.kwargs["prompt"]
         assert "No readable text" in death_prompt
+        assert "single uninterrupted scene" in death_prompt.lower()
+        assert "no split-screen" in death_prompt.lower()
+        assert "no sequential panels" in death_prompt.lower()
         assert "HP" not in death_prompt
 
     @pytest.mark.asyncio

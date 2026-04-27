@@ -59,6 +59,9 @@ class TestProgressionStateService:
         assert "trophy-card composition" not in lowered
         assert "trading cards" in lowered
         assert "no readable text" in lowered
+        assert "single uninterrupted scene" in lowered
+        assert "no split-screen" in lowered
+        assert "no sequential panels" in lowered
         assert "cinematic composition" in lowered
 
     def test_build_final_image_prompt_changes_tone_by_ending_type(self):
@@ -70,6 +73,7 @@ class TestProgressionStateService:
                 "manuals": [],
             },
             ending_narrative="연우는 동굴 밖 바람을 처음으로 들이마신다.",
+            scenario_genre="wuxia",
         )
         defeat_prompt = ProgressionStateService.build_final_image_prompt(
             achievement_board={
@@ -79,7 +83,35 @@ class TestProgressionStateService:
                 "manuals": [],
             },
             ending_narrative="연우는 끝내 벽 아래에 주저앉아 마지막 기운을 흩뿌린다.",
+            scenario_genre="wuxia",
         )
 
         assert "victory, cave exit, release, dawn light" in victory_prompt
         assert "defeat, tragic stillness, exhaustion" in defeat_prompt
+
+    def test_build_final_image_prompt_uses_wuxia_style_only_for_wuxia(self):
+        survival_prompt = ProgressionStateService.build_final_image_prompt(
+            achievement_board={
+                "character_name": "하윤",
+                "title": "폐허생환자",
+                "ending_type": "victory",
+                "manuals": [],
+            },
+            ending_narrative="하윤은 폐허 병원을 빠져나와 새 은신처를 찾는다.",
+            scenario_genre="survival",
+        )
+        wuxia_prompt = ProgressionStateService.build_final_image_prompt(
+            achievement_board={
+                "character_name": "연우",
+                "title": "동굴생환자",
+                "ending_type": "victory",
+                "manuals": [],
+            },
+            ending_narrative="연우는 동굴 밖 바람을 처음으로 들이마신다.",
+            scenario_genre="wuxia",
+        )
+
+        assert "wuxia" not in survival_prompt.lower()
+        assert "chinese martial arts" not in survival_prompt.lower()
+        assert "cave" not in survival_prompt.lower()
+        assert "wuxia" in wuxia_prompt.lower()

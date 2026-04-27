@@ -1061,3 +1061,27 @@ class TestDeathEndingPromptProfile:
         assert "body weight giving out" in prompt
         assert "Do not depict a standing hero pose" in prompt
         assert "upright full-body victory stance" in prompt
+
+    def test_death_ending_prompt_uses_wuxia_style_only_for_wuxia(self):
+        survival_prompt = (
+            ProcessActionUseCase._build_death_ending_image_prompt(
+                character_name="하윤",
+                character_prompt_profile="",
+                current_location="폐허 병원",
+                death_narrative="하윤은 감염체를 피해 달리다 쓰러졌다.",
+                scenario_name="생존 기록",
+                scenario_genre="survival",
+            )
+        )
+        wuxia_prompt = ProcessActionUseCase._build_death_ending_image_prompt(
+            character_name="연우",
+            character_prompt_profile="",
+            current_location="절벽 아래 동굴",
+            death_narrative="연우는 마지막 숨을 몰아쉬며 무릎을 꿇었다.",
+            scenario_name="기연 일지",
+            scenario_genre="wuxia",
+        )
+
+        assert "wuxia" not in survival_prompt.lower()
+        assert "chinese martial arts" not in survival_prompt.lower()
+        assert "wuxia" in wuxia_prompt.lower()

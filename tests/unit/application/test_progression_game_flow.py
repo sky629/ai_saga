@@ -34,7 +34,7 @@ def _make_progression_scenario() -> ScenarioEntity:
         world_setting="절벽 아래 신비한 동굴에서 1년간 수련한다.",
         initial_location="청색광이 감도는 거대 동굴",
         game_type=GameType.PROGRESSION,
-        genre=ScenarioGenre.HISTORICAL,
+        genre=ScenarioGenre.WUXIA,
         difficulty=ScenarioDifficulty.NORMAL,
         max_turns=12,
         tags=["무협", "수련", "기연", "동굴"],
@@ -1439,6 +1439,52 @@ async def test_progression_hp_zero_triggers_immediate_defeat_ending():
     assert "This is a death scene, not a generic defeat scene." in death_prompt
     assert "collapsed, kneeling, fallen, or slumped posture" in death_prompt
     assert "cave mouth aftermath" not in death_prompt
+
+
+@pytest.mark.asyncio
+async def test_progression_death_narrative_uses_genre_specific_role():
+    user_id = get_uuid7()
+    scenario = _make_progression_scenario().model_copy(
+        update={
+            "name": "생존 기록",
+            "world_setting": "감염체가 배회하는 폐허 도시에서 버틴다.",
+            "genre": ScenarioGenre.SURVIVAL,
+            "tags": ["생존", "아포칼립스"],
+        }
+    )
+    character = _make_character(user_id, scenario.id)
+    llm_service = AsyncMock()
+    llm_response = MagicMock()
+    llm_response.content = "하윤은 끝내 폐허 병원 바닥에 쓰러졌다."
+    llm_service.generate_response.return_value = llm_response
+    use_case = ProcessActionUseCase(
+        session_repository=AsyncMock(),
+        message_repository=AsyncMock(),
+        character_repository=AsyncMock(),
+        scenario_repository=AsyncMock(),
+        llm_service=llm_service,
+        cache_service=AsyncMock(),
+        embedding_service=AsyncMock(),
+    )
+
+    await use_case._generate_progression_death_narrative(
+        scenario=scenario,
+        character=character,
+        achievement_board={
+            "title": "폐허생환자",
+            "total_score": 12,
+            "internal_power": 1,
+            "external_power": 2,
+            "manuals": [],
+        },
+        base_narrative="하윤은 쓰러졌다.",
+    )
+
+    death_prompt = llm_service.generate_response.await_args.kwargs[
+        "system_prompt"
+    ]
+    assert "무협 성장형" not in death_prompt
+    assert "성장형 텍스트 게임의 죽음 엔딩" in death_prompt
 
 
 @pytest.mark.asyncio

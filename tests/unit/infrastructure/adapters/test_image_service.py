@@ -186,6 +186,17 @@ def test_apply_global_style_adds_global_constraints_once():
     )
 
 
+def test_apply_global_style_adds_layout_when_only_partial_constraint_exists():
+    """일부 금지어가 있어도 전체 단일 컷 제약을 생략하면 안 된다."""
+    prompt = ImageGenerationServiceAdapter._apply_global_style(
+        "no speech bubbles, hero portrait"
+    )
+
+    assert GLOBAL_IMAGE_LAYOUT_PROMPT in prompt
+    assert "no split-screen" in prompt
+    assert "no sequential panels" in prompt
+
+
 def test_uses_generic_object_storage_settings_for_boto_client(monkeypatch):
     """범용 object storage 설정으로 boto3 client를 구성해야 한다."""
     monkeypatch.setattr(
